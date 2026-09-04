@@ -1,0 +1,104 @@
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
+import { PrismaService } from "../prisma/prisma.service";
+import { CreateDeploymentDto } from "./dto/create-deployment.dto";
+
+export const DEPLOYMENTS_QUEUE = "deployments";
+
+@Injectable()
+export class DeploymentsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue(DEPLOYMENTS_QUEUE) private readonly queue: Queue,
+  ) {}
+
+  async list(projectId: string) {
+    return this.prisma.deployment.findMany({
+      where: { projectId },
+      include: { service: { select: { name: true, framework: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+  }
+
+  async findOne(deploymentId: string) {
+    const deployment = await this.prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      include: {
+        logs: { orderBy: { timestamp: "asc" } },
+        service: true,
+        project: { select: { id: true, name: true, slug: true } },
+      },
+    });
+    if (!deployment) throw new NotFoundException("Deployment not found");
+    return deployment;
+  }
+
+  async create(dto: CreateDeploymentDto, triggeredById: string, isAutoDeploy = false) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: dto.projectId },
+      include: { repository: true },
+    });
+    if (!project) throw new NotFoundException("Project not found");
+
+    const deployment = await this.prisma.deployment.create({
+      data: {
+        projectId: dto.projectId,
+        serviceId: dto.serviceId,
+        environment: dto.environment ?? "PRODUCTION",
+        branch: dto.branch ?? project.repository?.defaultBranch ?? "main",
+        commitSha: this.fakeCommitSha(),
+        commitMessage: isAutoDeploy ? "Auto-deploy on push" : "Manual deploy",
+        triggeredById,
+        isAutoDeploy,
+        status: "QUEUED",
+      },
+    });
+
+    await this.queue.add("run-deployment", { deploymentId: deployment.id }, { removeOnComplete: 100, removeOnFail: 100 });
+    return deployment;
+  }
+
+  async redeploy(deploymentId: string, triggeredById: string) {
+    const previous = await this.findOne(deploymentId);
+    return this.create(
+      {
+        projectId: previous.projectId,
+        serviceId: previous.serviceId ?? undefined,
+        branch: previous.branch,
+        environment: previous.environment,
+      },
+      triggeredById,
+    );
+  }
+
+  async rollback(deploymentId: string, targetDeploymentId: string, triggeredById: string) {
+    const target = await this.prisma.deployment.findUnique({ where: { id: targetDeploymentId } });
+    if (!target || target.status !== "LIVE") {
+      throw new NotFoundException("Target deployment is not a healthy, live deployment");
+    }
+    const rollback = await this.create(
+      {
+        projectId: target.projectId,
+        serviceId: target.serviceId ?? undefined,
+        branch: target.branch,
+        environment: target.environment,
+      },
+      triggeredById,
+    );
+    await this.prisma.deployment.update({ where: { id: deploymentId }, data: { status: "ROLLED_BACK" } });
+    return rollback;
+  }
+
+  async cancel(deploymentId: string) {
+    return this.prisma.deployment.update({
+      where: { id: deploymentId },
+      data: { status: "CANCELLED", finishedAt: new Date() },
+    });
+  }
+
+  private fakeCommitSha(): string {
+    return Math.random().toString(16).slice(2, 9);
+  }
+}

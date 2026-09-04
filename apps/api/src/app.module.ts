@@ -1,0 +1,44 @@
+import { Module } from "@nestjs/common";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { APP_GUARD } from "@nestjs/core";
+import { BullModule } from "@nestjs/bullmq";
+import { validateEnv } from "./config/env.validation";
+import { PrismaModule } from "./prisma/prisma.module";
+import { AuthModule } from "./auth/auth.module";
+import { OrganizationsModule } from "./organizations/organizations.module";
+import { ProjectsModule } from "./projects/projects.module";
+import { ServicesModule } from "./services/services.module";
+import { DeploymentsModule } from "./deployments/deployments.module";
+import { EnvironmentVariablesModule } from "./environment-variables/environment-variables.module";
+import { DatabasesModule } from "./databases/databases.module";
+import { DomainsModule } from "./domains/domains.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
+import { HealthModule } from "./health/health.module";
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: { url: config.getOrThrow<string>("REDIS_URL") },
+      }),
+    }),
+    PrismaModule,
+    AuthModule,
+    OrganizationsModule,
+    ProjectsModule,
+    ServicesModule,
+    DeploymentsModule,
+    EnvironmentVariablesModule,
+    DatabasesModule,
+    DomainsModule,
+    DashboardModule,
+    HealthModule,
+  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+})
+export class AppModule {}

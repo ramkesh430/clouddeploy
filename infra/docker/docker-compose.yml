@@ -1,0 +1,127 @@
+name: clouddeploy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clouddeploy
+      POSTGRES_PASSWORD: clouddeploy
+      POSTGRES_DB: clouddeploy
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - clouddeploy_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clouddeploy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6382}:6379"
+    volumes:
+      - clouddeploy_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --address ":9000" --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: clouddeploy
+      MINIO_ROOT_PASSWORD: clouddeploy-dev-secret
+    ports:
+      - "${MINIO_API_PORT:-9002}:9000"
+      - "${MINIO_CONSOLE_PORT:-9091}:9001"
+    volumes:
+      - clouddeploy_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      - "${REGISTRY_PORT:-5050}:5000"
+    volumes:
+      - clouddeploy_registry_data:/var/lib/registry
+
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@clouddeploy.dev"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-8000}:80"
+      - "${TRAEFIK_HTTPS_PORT:-8443}:443"
+      - "${TRAEFIK_DASHBOARD_PORT:-8090}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../traefik/dynamic:/etc/traefik/dynamic:ro
+      - clouddeploy_traefik_certs:/letsencrypt
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - clouddeploy_prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - clouddeploy_grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - clouddeploy_loki_data:/loki
+
+volumes:
+  clouddeploy_postgres_data:
+  clouddeploy_redis_data:
+  clouddeploy_minio_data:
+  clouddeploy_registry_data:
+  clouddeploy_traefik_certs:
+  clouddeploy_prometheus_data:
+  clouddeploy_grafana_data:
+  clouddeploy_loki_data:

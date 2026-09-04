@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.pem
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# prisma
+packages/database/prisma/migrations/dev/
+
+# docker volumes (local)
+infra/docker/volumes/
+
+# minio
+infra/minio/data/

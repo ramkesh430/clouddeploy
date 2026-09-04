@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": false,
+    "declarationMap": false,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2022",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "paths": {
+      "@clouddeploy/types": ["../../packages/types/src"],
+      "@clouddeploy/config": ["../../packages/config/src"],
+      "@clouddeploy/database": ["../../packages/database/src"],
+      "@clouddeploy/logger": ["../../packages/logger/src"],
+      "@clouddeploy/security": ["../../packages/security/src"],
+      "@clouddeploy/deployment-core": ["../../packages/deployment-core/src"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test"]
+}

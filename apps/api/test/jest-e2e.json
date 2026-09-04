@@ -1,0 +1,17 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@clouddeploy/types$": "<rootDir>/../../packages/types/src",
+    "^@clouddeploy/config$": "<rootDir>/../../packages/config/src",
+    "^@clouddeploy/database$": "<rootDir>/../../packages/database/src",
+    "^@clouddeploy/logger$": "<rootDir>/../../packages/logger/src",
+    "^@clouddeploy/security$": "<rootDir>/../../packages/security/src",
+    "^@clouddeploy/deployment-core$": "<rootDir>/../../packages/deployment-core/src"
+  }
+}

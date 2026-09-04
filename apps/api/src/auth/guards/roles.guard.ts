@@ -114,6 +114,33 @@ export class RolesGuard implements CanActivate {
       });
       return envVar?.project.organizationId;
     }
+
+    const redisInstanceId = request.params?.redisInstanceId;
+    if (redisInstanceId) {
+      const instance = await this.prisma.redisInstance.findUnique({
+        where: { id: redisInstanceId },
+        select: { service: { select: { project: { select: { organizationId: true } } } } },
+      });
+      return instance?.service.project.organizationId;
+    }
+
+    const bucketId = request.params?.bucketId;
+    if (bucketId) {
+      const bucket = await this.prisma.storageBucket.findUnique({
+        where: { id: bucketId },
+        select: { organizationId: true },
+      });
+      return bucket?.organizationId;
+    }
+
+    const cronJobId = request.params?.cronJobId;
+    if (cronJobId) {
+      const cronJob = await this.prisma.cronJob.findUnique({
+        where: { id: cronJobId },
+        select: { project: { select: { organizationId: true } } },
+      });
+      return cronJob?.project.organizationId;
+    }
     return undefined;
   }
 }

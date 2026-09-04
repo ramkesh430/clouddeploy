@@ -11,6 +11,7 @@ export class ServicesService {
   async listByProject(projectId: string) {
     return this.prisma.service.findMany({
       where: { projectId, deletedAt: null },
+      include: { redisInstance: { select: { id: true } }, database: { select: { id: true } } },
       orderBy: { createdAt: "asc" },
     });
   }

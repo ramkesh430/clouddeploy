@@ -24,7 +24,9 @@
       "@clouddeploy/database": ["../../packages/database/src"],
       "@clouddeploy/logger": ["../../packages/logger/src"],
       "@clouddeploy/security": ["../../packages/security/src"],
-      "@clouddeploy/deployment-core": ["../../packages/deployment-core/src"]
+      "@clouddeploy/deployment-core": ["../../packages/deployment-core/src"],
+      "@clouddeploy/docker": ["../../packages/docker/src"],
+      "@clouddeploy/storage": ["../../packages/storage/src"]
     }
   },
   "include": ["src/**/*"],

@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
-import { ExternalLink, RotateCw, MoreHorizontal } from "lucide-react";
+import { ExternalLink, RotateCw, MoreHorizontal, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useProject } from "@/hooks/use-projects";
 import { useCreateDeployment } from "@/hooks/use-deployments";
 import { cn, formatRelativeTime } from "@/lib/utils";
@@ -16,6 +19,7 @@ const TABS = [
   { href: "/deployments", label: "Deployments" },
   { href: "/environment", label: "Environment" },
   { href: "/domains", label: "Domains" },
+  { href: "/cron-jobs", label: "Cron Jobs" },
   { href: "/logs", label: "Logs" },
   { href: "/settings", label: "Settings" },
 ];
@@ -25,6 +29,8 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const { data: project, isLoading } = useProject(params.projectId);
   const createDeployment = useCreateDeployment();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBranch, setPreviewBranch] = useState("feature-branch");
 
   const basePath = `/projects/${params.projectId}`;
 
@@ -58,6 +64,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
             <Button size="sm" loading={createDeployment.isPending} onClick={() => createDeployment.mutate({ projectId: p.id })}>
               <RotateCw className="h-3.5 w-3.5" /> Redeploy
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)}>
+              <GitBranch className="h-3.5 w-3.5" /> Deploy Preview
+            </Button>
             <Button variant="ghost" size="icon">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -90,6 +99,32 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </nav>
       </div>
       {children}
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deploy a preview</DialogTitle>
+            <DialogDescription>
+              Builds and deploys a branch to its own preview URL without touching production.
+            </DialogDescription>
+          </DialogHeader>
+          <Input value={previewBranch} onChange={(e) => setPreviewBranch(e.target.value)} placeholder="feature-branch" />
+          <DialogFooter>
+            <Button
+              loading={createDeployment.isPending}
+              disabled={!previewBranch}
+              onClick={() =>
+                createDeployment.mutate(
+                  { projectId: p.id, branch: previewBranch, environment: "PREVIEW" },
+                  { onSuccess: () => setPreviewOpen(false) },
+                )
+              }
+            >
+              Deploy Preview
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

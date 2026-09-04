@@ -77,14 +77,25 @@ export class DeploymentProcessor extends WorkerHost {
         data: { status: "RUNNING" },
       });
 
+      const platformDomain = process.env.PLATFORM_DOMAIN ?? "clouddeploy.app";
+      const isPreview = deployment.environment === "PREVIEW";
+      const previewUrl = isPreview
+        ? `${this.slugify(deployment.branch)}-${deploymentId.slice(0, 6)}.${platformDomain}`
+        : undefined;
+
       await this.prisma.deployment.update({
         where: { id: deploymentId },
-        data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date() },
+        data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl },
       });
-      await this.prisma.project.update({
-        where: { id: deployment.projectId },
-        data: { productionUrl: deployment.project.productionUrl ?? `https://${deployment.project.slug}.clouddeploy.app` },
-      });
+
+      if (isPreview) {
+        await this.log(deploymentId, "INFO", `Preview deployment ready at https://${previewUrl}`);
+      } else {
+        await this.prisma.project.update({
+          where: { id: deployment.projectId },
+          data: { productionUrl: deployment.project.productionUrl ?? `https://${deployment.project.slug}.clouddeploy.app` },
+        });
+      }
 
       this.gateway.emitStatus(deploymentId, { status: "LIVE", progressPct: 100, currentStep: "Deploy Live" });
 
@@ -141,5 +152,9 @@ export class DeploymentProcessor extends WorkerHost {
 
   private delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private slugify(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   }
 }

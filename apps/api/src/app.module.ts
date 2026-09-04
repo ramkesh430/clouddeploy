@@ -15,6 +15,10 @@ import { DatabasesModule } from "./databases/databases.module";
 import { DomainsModule } from "./domains/domains.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
+import { RedisDbModule } from "./redis-db/redis-db.module";
+import { StorageModule } from "./storage/storage.module";
+import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -38,6 +42,10 @@ import { HealthModule } from "./health/health.module";
     DomainsModule,
     DashboardModule,
     HealthModule,
+    RedisDbModule,
+    StorageModule,
+    CronJobsModule,
+    BillingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

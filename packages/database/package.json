@@ -15,7 +15,7 @@
     "seed": "ts-node --transpile-only prisma/seed.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

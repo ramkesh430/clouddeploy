@@ -82,10 +82,17 @@ export default function DeploymentDetailPage() {
               Redeploy
             </Button>
           )}
-          {currentStatus === "LIVE" && deployment?.project?.productionUrl && (
+          {currentStatus === "LIVE" && deployment?.environment !== "PREVIEW" && deployment?.project?.productionUrl && (
             <Button size="sm" variant="outline" asChild>
               <a href={`https://${deployment.project.productionUrl}`} target="_blank" rel="noreferrer">
                 Open App <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          )}
+          {currentStatus === "LIVE" && deployment?.environment === "PREVIEW" && deployment?.previewUrl && (
+            <Button size="sm" variant="outline" asChild>
+              <a href={`https://${deployment.previewUrl}`} target="_blank" rel="noreferrer">
+                Open Preview <ExternalLink className="h-3.5 w-3.5" />
               </a>
             </Button>
           )}

@@ -1,31 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Database as DatabaseIcon, Copy, RotateCw, Save } from "lucide-react";
+import Link from "next/link";
+import { Plus, Database as DatabaseIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { useActiveOrganization } from "@/hooks/use-active-organization";
-import {
-  useDatabases,
-  useCreateDatabase,
-  useDatabaseConnection,
-  useCreateBackup,
-  useRotatePassword,
-} from "@/hooks/use-databases";
+import { useDatabases, useCreateDatabase } from "@/hooks/use-databases";
 import { formatBytes, formatRelativeTime } from "@/lib/utils";
-import { toast } from "@/lib/store/toast-store";
 
 export default function DatabasesPage() {
   const { active } = useActiveOrganization();
@@ -35,7 +22,6 @@ export default function DatabasesPage() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [engine, setEngine] = useState("POSTGRESQL");
-  const [selected, setSelected] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -69,6 +55,11 @@ export default function DatabasesPage() {
                     </button>
                   ))}
                 </div>
+                {engine !== "POSTGRESQL" && (
+                  <p className="text-xs text-muted-foreground">
+                    MySQL/MariaDB provisioning is simulated until a MySQL server is wired into the local infra stack — PostgreSQL is fully real (table browser, SQL editor, backups).
+                  </p>
+                )}
               </div>
             </div>
             <DialogFooter>
@@ -116,8 +107,10 @@ export default function DatabasesPage() {
                     <td className="p-4"><StatusBadge status={db.status} /></td>
                     <td className="p-4 text-muted-foreground">{formatRelativeTime(db.createdAt)}</td>
                     <td className="p-4">
-                      <Button variant="ghost" size="sm" onClick={() => setSelected(db.id)}>
-                        <DatabaseIcon className="h-3.5 w-3.5" /> Manage
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/databases/${db.id}`}>
+                          <DatabaseIcon className="h-3.5 w-3.5" /> Manage
+                        </Link>
                       </Button>
                     </td>
                   </tr>
@@ -127,58 +120,6 @@ export default function DatabasesPage() {
           </CardContent>
         </Card>
       )}
-
-      {selected && <DatabaseDetailDialog databaseId={selected} onOpenChange={(v) => !v && setSelected(null)} />}
     </div>
-  );
-}
-
-function DatabaseDetailDialog({ databaseId, onOpenChange }: { databaseId: string; onOpenChange: (open: boolean) => void }) {
-  const { data: connection } = useDatabaseConnection(databaseId) as { data: any };
-  const createBackup = useCreateBackup(databaseId);
-  const rotatePassword = useRotatePassword(databaseId);
-
-  return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Connection Details</DialogTitle></DialogHeader>
-        {connection && (
-          <div className="flex flex-col gap-2 font-mono text-xs">
-            {[
-              ["Host", connection.privateHost],
-              ["Port", connection.port],
-              ["Database", connection.database],
-              ["Username", connection.username],
-              ["Password", connection.password],
-              ["Connection URL", connection.connectionUrl],
-            ].map(([label, value]) => (
-              <div key={label as string} className="flex items-center justify-between rounded-md border border-border p-2">
-                <div className="min-w-0">
-                  <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-                  <p className="truncate">{value}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(String(value));
-                    toast({ title: `${label} copied` });
-                  }}
-                  className="shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <DialogFooter className="gap-2 sm:justify-start">
-          <Button variant="outline" size="sm" onClick={() => createBackup.mutate()} loading={createBackup.isPending}>
-            <Save className="h-3.5 w-3.5" /> Create Backup
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => rotatePassword.mutate()} loading={rotatePassword.isPending}>
-            <RotateCw className="h-3.5 w-3.5" /> Rotate Password
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

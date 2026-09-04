@@ -33,6 +33,12 @@ export const envSchema = z.object({
   S3_SECRET_KEY: z.string().default("clouddeploy-dev-secret"),
   S3_REGION: z.string().default("us-east-1"),
   S3_BUCKET: z.string().default("clouddeploy-platform"),
+  S3_BACKUPS_BUCKET: z.string().default("clouddeploy-backups"),
+
+  /** Container running the shared local Postgres instance — see the note on
+   * PostgresAdminService for why `docker exec` is used for pg_dump/psql
+   * locally instead of shelling out directly. */
+  POSTGRES_CONTAINER_NAME: z.string().default("clouddeploy-postgres-1"),
 
   REGISTRY_URL: z.string().default("localhost:5001"),
   TRAEFIK_API: z.string().default("http://localhost:8090"),

@@ -44,7 +44,7 @@ export function useCreateDeployment() {
   const queryClient = useQueryClient();
   const router = useRouter();
   return useMutation({
-    mutationFn: (input: { projectId: string; serviceId?: string; branch?: string }) =>
+    mutationFn: (input: { projectId: string; serviceId?: string; branch?: string; environment?: "PRODUCTION" | "PREVIEW" }) =>
       api.post<Deployment>("/deployments", input),
     onSuccess: (deployment) => {
       queryClient.invalidateQueries({ queryKey: ["deployments", deployment.projectId] });

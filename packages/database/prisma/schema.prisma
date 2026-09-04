@@ -485,6 +485,7 @@ model Deployment {
   environment   EnvironmentTarget @default(PRODUCTION)
   status        DeploymentStatus @default(QUEUED)
   branch        String
+  previewUrl    String?
   commitSha     String?
   commitMessage String?
   triggeredById String?

@@ -9,10 +9,23 @@ import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
 import { createLogger } from "@clouddeploy/logger";
 
+// Prisma maps Postgres BIGINT columns (sizeBytes on DatabaseBackup,
+// StorageObject, BuildArtifact) to native BigInt, which JSON.stringify
+// cannot serialize on its own. Every response passes through Express's
+// res.json() -> JSON.stringify, so this one global fix (stringify BigInts,
+// same as Node's own JSON.stringify(BigInt) error suggests) covers every
+// route rather than converting the type at each call site.
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function (this: bigint) {
+  return this.toString();
+};
+
 const logger = createLogger("api");
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody: true makes req.rawBody available on every route so the Stripe
+  // webhook handler can verify signatures, while every other route still
+  // gets the normal parsed JSON body.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   const configuredOrigin = process.env.WEB_APP_URL ?? "http://localhost:3000";
 

@@ -6,12 +6,16 @@ const IV_LENGTH = 12;
 /**
  * Symmetric encryption for at-rest secrets: environment variable values,
  * database credentials, OAuth tokens. Encrypted values are stored as
- * `enc:v1:<iv>:<authTag>:<ciphertext>` (base64 segments) so ciphertext is
- * self-describing and can be rotated to a new algorithm/version later.
+ * `encv1:<iv>:<authTag>:<ciphertext>` (base64 segments, colon-delimited) so
+ * ciphertext is self-describing and can be rotated to a new algorithm/
+ * version later. The version tag itself must not contain a colon, since
+ * decryption splits the whole payload on ":".
  *
  * The key is derived from ENCRYPTION_KEY (32+ chars) via SHA-256, never
  * stored alongside the ciphertext, and never logged.
  */
+const VERSION_TAG = "encv1";
+
 function deriveKey(secret: string): Buffer {
   return crypto.createHash("sha256").update(secret).digest();
 }
@@ -23,7 +27,7 @@ export function encryptSecret(plainText: string, encryptionKey: string): string 
   const ciphertext = Buffer.concat([cipher.update(plainText, "utf8"), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return [
-    "enc:v1",
+    VERSION_TAG,
     iv.toString("base64"),
     authTag.toString("base64"),
     ciphertext.toString("base64"),
@@ -32,7 +36,7 @@ export function encryptSecret(plainText: string, encryptionKey: string): string 
 
 export function decryptSecret(encoded: string, encryptionKey: string): string {
   const [tag, ivB64, authTagB64, ciphertextB64] = encoded.split(":");
-  if (tag !== "enc:v1" || !ivB64 || !authTagB64 || !ciphertextB64) {
+  if (tag !== VERSION_TAG || !ivB64 || !authTagB64 || !ciphertextB64) {
     throw new Error("Malformed encrypted secret payload");
   }
   const key = deriveKey(encryptionKey);

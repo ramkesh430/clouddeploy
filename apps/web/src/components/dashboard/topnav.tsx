@@ -13,10 +13,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useActiveOrganization } from "@/hooks/use-active-organization";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { useUnreadCount } from "@/hooks/use-notifications";
 
 export function TopNav() {
   const { organizations, active } = useActiveOrganization();
   const setActiveOrganization = useAuthStore((s) => s.setActiveOrganization);
+  const { data: unreadCount } = useUnreadCount();
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6">
@@ -53,9 +55,14 @@ export function TopNav() {
             <BookOpen className="h-4 w-4" />
           </Link>
         </Button>
-        <Button variant="ghost" size="icon" asChild>
+        <Button variant="ghost" size="icon" asChild className="relative">
           <Link href="/notifications" aria-label="Notifications">
             <Bell className="h-4 w-4" />
+            {!!unreadCount && (
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </Link>
         </Button>
         <Button size="sm" asChild>

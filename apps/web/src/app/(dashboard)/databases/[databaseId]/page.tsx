@@ -4,14 +4,17 @@ import { useParams } from "next/navigation";
 import { Copy, RotateCw, RefreshCw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useDatabaseConnection, useRotatePassword } from "@/hooks/use-databases";
+import { Progress } from "@/components/ui/progress";
+import { useDatabaseConnection, useRotatePassword, useDatabaseMetrics } from "@/hooks/use-databases";
 import { api } from "@/lib/api-client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/store/toast-store";
+import { formatBytes } from "@/lib/utils";
 
 export default function DatabaseOverviewPage() {
   const params = useParams<{ databaseId: string }>();
   const { data: connection } = useDatabaseConnection(params.databaseId) as { data: any };
+  const { data: metrics } = useDatabaseMetrics(params.databaseId);
   const rotatePassword = useRotatePassword(params.databaseId);
   const queryClient = useQueryClient();
 
@@ -30,6 +33,28 @@ export default function DatabaseOverviewPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {metrics?.supported && (
+        <Card>
+          <CardContent className="grid grid-cols-2 gap-6 p-5 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Active Connections</p>
+              <p className="mt-1 text-lg font-semibold">{metrics.connections}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Storage Used</p>
+              <p className="mt-1 text-lg font-semibold">{formatBytes(metrics.sizeBytes ?? 0)}</p>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <div className="flex items-baseline justify-between">
+                <p className="text-xs text-muted-foreground">Storage Usage</p>
+                <p className="text-xs font-medium">{metrics.storagePct}%</p>
+              </div>
+              <Progress value={Math.min(100, metrics.storagePct ?? 0)} className="mt-2" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="flex flex-col gap-3 p-5">
           <div className="flex items-center justify-between">

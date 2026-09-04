@@ -48,6 +48,15 @@ export default function TeamPage() {
     },
   });
 
+  const changeRole = useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: string }) =>
+      api.patch(`/organizations/${active?.id}/members/${memberId}/role`, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", active?.id] });
+      toast({ title: "Role updated", variant: "success" });
+    },
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -104,7 +113,20 @@ export default function TeamPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="p-4"><Badge variant="outline">{m.role.replace(/_/g, " ")}</Badge></td>
+                  <td className="p-4">
+                    {m.role === "OWNER" ? (
+                      <Badge variant="outline">Owner</Badge>
+                    ) : (
+                      <select
+                        className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                        value={m.role}
+                        disabled={changeRole.isPending}
+                        onChange={(e) => changeRole.mutate({ memberId: m.id, role: e.target.value })}
+                      >
+                        {ROLES.filter((r) => r !== "OWNER").map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
+                      </select>
+                    )}
+                  </td>
                   <td className="p-4"><StatusBadge status={m.status} /></td>
                   <td className="p-4 text-muted-foreground">{m.joinedAt ? formatRelativeTime(m.joinedAt) : "Pending"}</td>
                   <td className="p-4">

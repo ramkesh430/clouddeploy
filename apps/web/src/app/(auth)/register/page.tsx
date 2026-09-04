@@ -59,7 +59,7 @@ export default function RegisterPage() {
         </div>
         <form
           className="flex flex-col gap-4"
-          onSubmit={handleSubmit((v) => registerAccount.mutate(v))}
+          onSubmit={handleSubmit((v) => registerAccount.mutate({ fullName: v.fullName, email: v.email, password: v.password }))}
         >
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fullName">Full Name</Label>

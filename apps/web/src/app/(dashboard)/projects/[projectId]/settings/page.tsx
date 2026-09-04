@@ -2,8 +2,11 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +17,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useProject, useProjectAction, useDeleteProject } from "@/hooks/use-projects";
+import { useActiveOrganization } from "@/hooks/use-active-organization";
+import { api } from "@/lib/api-client";
+import { toast } from "@/lib/store/toast-store";
 
 export default function ProjectSettingsPage() {
   const params = useParams<{ projectId: string }>();
@@ -51,6 +57,8 @@ export default function ProjectSettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ProjectMembersCard projectId={params.projectId} />
 
       <Card className="border-destructive/30">
         <CardHeader>
@@ -114,5 +122,92 @@ export default function ProjectSettingsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** Grants explicit project-level access to Developer/Viewer org members, who
+ * otherwise only see projects they created — Owner/Admin always see everything. */
+function ProjectMembersCard({ projectId }: { projectId: string }) {
+  const { active } = useActiveOrganization();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [userId, setUserId] = useState("");
+
+  const { data: projectMembers } = useQuery({
+    queryKey: ["project-members", projectId],
+    queryFn: () => api.get<any[]>(`/projects/${projectId}/members`),
+  });
+
+  const { data: orgMembers } = useQuery({
+    queryKey: ["members", active?.id],
+    queryFn: () => api.get<any[]>(`/organizations/${active?.id}/members`),
+    enabled: !!active?.id,
+  });
+
+  const grantedUserIds = new Set((projectMembers ?? []).map((m) => m.userId));
+  const grantable = (orgMembers ?? []).filter((m) => m.userId && !grantedUserIds.has(m.userId));
+
+  const grant = useMutation({
+    mutationFn: () => api.post(`/projects/${projectId}/members`, { userId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-members", projectId] });
+      toast({ title: "Access granted", variant: "success" });
+      setOpen(false);
+      setUserId("");
+    },
+  });
+
+  const revoke = useMutation({
+    mutationFn: (memberId: string) => api.delete(`/projects/${projectId}/members/${memberId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-members", projectId] });
+      toast({ title: "Access revoked" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle>Project Members</CardTitle>
+          <CardDescription>Developer/Viewer workspace members only see projects granted here (Owners/Admins see everything).</CardDescription>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" disabled={grantable.length === 0}>
+              <Plus className="h-3.5 w-3.5" /> Grant Access
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Grant project access</DialogTitle></DialogHeader>
+            <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={userId} onChange={(e) => setUserId(e.target.value)}>
+              <option value="">Select a workspace member</option>
+              {grantable.map((m) => (
+                <option key={m.userId} value={m.userId}>{m.user?.fullName ?? m.email}</option>
+              ))}
+            </select>
+            <DialogFooter>
+              <Button loading={grant.isPending} disabled={!userId} onClick={() => grant.mutate()}>Grant Access</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {(projectMembers ?? []).map((m) => (
+          <div key={m.id} className="flex items-center justify-between rounded-md border border-border p-2.5">
+            <div className="flex items-center gap-2">
+              <Avatar className="h-6 w-6"><AvatarFallback>{(m.user?.fullName ?? m.user?.email ?? "?").slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
+              <p className="text-sm">{m.user?.fullName ?? m.user?.email}</p>
+            </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => revoke.mutate(m.id)}>
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        ))}
+        {(projectMembers ?? []).length === 0 && (
+          <p className="py-2 text-center text-sm text-muted-foreground">No individually-granted members — only Owners/Admins and the creator can see this project.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

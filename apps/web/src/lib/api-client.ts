@@ -49,7 +49,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const accessToken = useAuthStore.getState().accessToken;
 
   const doFetch = async (token: string | null) => {
-    return fetch(`${API_URL}${path.startsWith("/api") ? path : `/api/v1${path}`}`, {
+    // Every caller passes a bare resource path (e.g. "/api-keys",
+    // "/deployments/123") — always version-prefix it. A prior "does this
+    // already start with /api?" heuristic collided with resource paths
+    // that happen to start with those same four characters (like
+    // "/api-keys" itself), silently dropping the /v1 prefix and 404ing.
+    return fetch(`${API_URL}/api/v1${path}`, {
       ...rest,
       credentials: "include",
       headers: {

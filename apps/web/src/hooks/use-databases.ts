@@ -78,3 +78,82 @@ export function useRotatePassword(databaseId: string) {
     },
   });
 }
+
+export interface DatabaseMetrics {
+  supported: boolean;
+  reason?: string;
+  connections?: number;
+  sizeBytes?: number;
+  storageLimitBytes?: number;
+  storagePct?: number;
+}
+
+export function useDatabaseMetrics(databaseId: string | null) {
+  return useQuery({
+    queryKey: ["database-metrics", databaseId],
+    queryFn: () => api.get<DatabaseMetrics>(`/databases/${databaseId}/metrics`),
+    enabled: !!databaseId,
+    refetchInterval: 10_000,
+  });
+}
+
+export interface DatabaseConnectionSession {
+  pid: number;
+  username: string;
+  clientAddr: string | null;
+  state: string;
+  query: string;
+  queryStart: string | null;
+  connectedAt: string;
+}
+
+export function useDatabaseConnections(databaseId: string | null) {
+  return useQuery({
+    queryKey: ["database-connections", databaseId],
+    queryFn: () => api.get<{ supported: boolean; reason?: string; connections?: DatabaseConnectionSession[] }>(`/databases/${databaseId}/connections`),
+    enabled: !!databaseId,
+    refetchInterval: 5_000,
+  });
+}
+
+export interface DatabaseUser {
+  id: string;
+  databaseId: string;
+  username: string;
+  role: string;
+  createdAt: string;
+}
+
+export function useDatabaseUsers(databaseId: string | null) {
+  return useQuery({
+    queryKey: ["database-users", databaseId],
+    queryFn: () => api.get<DatabaseUser[]>(`/databases/${databaseId}/users`),
+    enabled: !!databaseId,
+  });
+}
+
+export function useCreateDatabaseUser(databaseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { username: string; role: "readonly" | "readwrite" }) =>
+      api.post<DatabaseUser & { password: string }>(`/databases/${databaseId}/users`, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["database-users", databaseId] });
+      toast({ title: "Database user created", variant: "success" });
+    },
+    onError: (err) => {
+      toast({ title: "Could not create user", description: err instanceof ApiError ? err.message : "Try again", variant: "destructive" });
+    },
+  });
+}
+
+export function useDeleteDatabaseUser(databaseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (databaseUserId: string) => api.delete(`/databases/${databaseId}/users/${databaseUserId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["database-users", databaseId] });
+      toast({ title: "Database user removed" });
+    },
+  });
+}

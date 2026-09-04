@@ -13,6 +13,8 @@ const TABS = [
   { href: "/tables", label: "Tables" },
   { href: "/sql-editor", label: "SQL Editor" },
   { href: "/backups", label: "Backups" },
+  { href: "/users", label: "Users" },
+  { href: "/connections", label: "Connections" },
 ];
 
 export default function DatabaseLayout({ children }: { children: React.ReactNode }) {

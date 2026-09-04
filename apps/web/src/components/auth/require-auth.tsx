@@ -8,7 +8,11 @@ import { useAuthStore } from "@/lib/store/auth-store";
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
-  const [hasHydrated, setHasHydrated] = useState(useAuthStore.persist.hasHydrated());
+  // Starts false unconditionally so the very first render — including the
+  // server-rendered pass, where zustand's persist middleware has no
+  // localStorage to read from — never touches `useAuthStore.persist`.
+  // Hydration status is only checked once mounted, on the client.
+  const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
     if (hasHydrated) return;

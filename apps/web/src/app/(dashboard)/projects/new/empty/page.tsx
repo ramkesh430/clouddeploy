@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, ArrowLeft, ArrowRight, Rocket, Server, Globe } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, ArrowRight, Rocket, Server, Globe, Github, Database, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +12,11 @@ import { useActiveOrganization } from "@/hooks/use-active-organization";
 import { useCreateProject } from "@/hooks/use-projects";
 import { useCreateService } from "@/hooks/use-services";
 import { useCreateDeployment } from "@/hooks/use-deployments";
-import { RESOURCE_PRESETS, ServiceType, Runtime } from "@clouddeploy/types";
+import { useDetectStack, usePublicDetectStack, useImportRepository } from "@/hooks/use-github";
+import { api } from "@/lib/api-client";
+import { RESOURCE_PRESETS, ServiceType, Runtime, Framework } from "@clouddeploy/types";
 import { formatCurrency } from "@/lib/utils";
+import { toast } from "@/lib/store/toast-store";
 
 const STEPS = ["Project", "Services", "Review", "Deploy"] as const;
 
@@ -22,6 +25,7 @@ interface DraftService {
   name: string;
   type: ServiceType;
   runtime: Runtime;
+  framework?: Framework;
   rootDirectory: string;
   buildCommand: string;
   startCommand: string;
@@ -44,6 +48,10 @@ function newDraftService(overrides: Partial<DraftService> = {}): DraftService {
   };
 }
 
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
 export default function EmptyProjectWizardPage() {
   return (
     <Suspense fallback={null}>
@@ -56,10 +64,24 @@ function EmptyProjectWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dockerMode = searchParams.get("mode") === "docker";
+
+  // GitHub import params — either an authenticated connection+repo, or a
+  // public repo detected without any GitHub connection at all.
+  const connectionId = searchParams.get("connectionId");
+  const ghOwner = searchParams.get("owner");
+  const ghRepo = searchParams.get("repo");
+  const ghBranch = searchParams.get("branch") ?? undefined;
+  const publicOwner = searchParams.get("publicOwner");
+  const publicRepo = searchParams.get("publicRepo");
+  const isGithubImport = !!(connectionId && ghOwner && ghRepo) || !!(publicOwner && publicRepo);
+
   const { active } = useActiveOrganization();
   const createProject = useCreateProject();
   const createService = useCreateService();
   const createDeployment = useCreateDeployment();
+  const detectStack = useDetectStack();
+  const publicDetectStack = usePublicDetectStack();
+  const importRepository = useImportRepository();
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -70,20 +92,63 @@ function EmptyProjectWizard() {
     newDraftService(dockerMode ? { name: "app", type: ServiceType.DOCKER_SERVICE, runtime: Runtime.DOCKER, port: "8080" } : {}),
   ]);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [detected, setDetected] = useState<{ database: { engine: string; reason: string } | null; redis: { reason: string } | null } | null>(null);
+  const [addDatabase, setAddDatabase] = useState(false);
+  const [addRedis, setAddRedis] = useState(false);
+  const [detecting, setDetecting] = useState(isGithubImport);
+
+  useEffect(() => {
+    if (!isGithubImport) return;
+    const run = connectionId && ghOwner && ghRepo
+      ? detectStack.mutateAsync({ connectionId, owner: ghOwner, repo: ghRepo, branch: ghBranch })
+      : publicOwner && publicRepo
+        ? publicDetectStack.mutateAsync({ owner: publicOwner, repo: publicRepo })
+        : null;
+    if (!run) return;
+
+    run
+      .then((result) => {
+        const repoName = result.repositoryFullName.split("/")[1] ?? result.repositoryFullName;
+        setName(repoName);
+        setSlug(slugify(repoName));
+        setSlugTouched(true);
+        if (result.services.length > 0) {
+          setServices(
+            result.services.map((s) =>
+              newDraftService({
+                name: s.name,
+                type: s.type,
+                runtime: s.runtime,
+                framework: s.framework,
+                rootDirectory: s.rootDirectory,
+                buildCommand: s.buildCommand ?? "",
+                startCommand: s.startCommand ?? "",
+                port: s.port ? String(s.port) : "",
+              }),
+            ),
+          );
+        }
+        setDetected({ database: result.database, redis: result.redis });
+        setAddDatabase(!!result.database);
+        setAddRedis(!!result.redis);
+        toast({ title: "Stack detected", description: `Found ${result.services.length} service(s) in ${result.repositoryFullName}`, variant: "success" });
+      })
+      .finally(() => setDetecting(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateService = (id: string, patch: Partial<DraftService>) =>
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
   const removeService = (id: string) => setServices((prev) => prev.filter((s) => s.id !== id));
 
-  const estimatedCost = useMemo(
-    () =>
-      services.reduce((sum, s) => {
-        const preset = RESOURCE_PRESETS.find((p) => p.id === s.resourcePreset);
-        return sum + (preset?.estimatedMonthlyUsd ?? 0);
-      }, 0),
-    [services],
-  );
+  const estimatedCost = useMemo(() => {
+    const servicesCost = services.reduce((sum, s) => {
+      const preset = RESOURCE_PRESETS.find((p) => p.id === s.resourcePreset);
+      return sum + (preset?.estimatedMonthlyUsd ?? 0);
+    }, 0);
+    return servicesCost + (addDatabase ? 5 : 0) + (addRedis ? 2 : 0);
+  }, [services, addDatabase, addRedis]);
 
   const canContinueFromProject = name.trim().length >= 2 && slug.trim().length >= 2;
   const canContinueFromServices = services.length > 0 && services.every((s) => s.name.trim().length > 0);
@@ -93,12 +158,23 @@ function EmptyProjectWizard() {
     setIsDeploying(true);
     try {
       const project = await createProject.mutateAsync({ organizationId: active.id, name, slug, region });
+
+      if (connectionId && ghOwner && ghRepo) {
+        await importRepository.mutateAsync({
+          projectId: project.id,
+          connectionId,
+          fullName: `${ghOwner}/${ghRepo}`,
+          branch: ghBranch,
+        });
+      }
+
       for (const s of services) {
         await createService.mutateAsync({
           projectId: project.id,
           name: s.name,
           type: s.type,
           runtime: s.runtime,
+          framework: s.framework,
           rootDirectory: s.rootDirectory || ".",
           buildCommand: s.buildCommand || undefined,
           startCommand: s.startCommand || undefined,
@@ -106,7 +182,19 @@ function EmptyProjectWizard() {
           resourcePreset: s.resourcePreset,
         });
       }
-      createDeployment.mutate({ projectId: project.id });
+
+      if (addDatabase && detected?.database) {
+        await api.post("/databases", {
+          organizationId: active.id,
+          name: `${slug}-db`,
+          engine: detected.database.engine,
+        });
+      }
+      if (addRedis) {
+        await api.post("/redis", { projectId: project.id, name: `${slug}-cache` });
+      }
+
+      createDeployment.mutate({ projectId: project.id, branch: ghBranch });
     } finally {
       setIsDeploying(false);
     }
@@ -129,6 +217,14 @@ function EmptyProjectWizard() {
           </div>
         ))}
       </div>
+
+      {detecting && (
+        <Card>
+          <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
+            <Github className="h-4 w-4 animate-pulse" /> Detecting your stack...
+          </CardContent>
+        </Card>
+      )}
 
       {step === 0 && (
         <Card>
@@ -174,15 +270,35 @@ function EmptyProjectWizard() {
       {step === 1 && (
         <Card>
           <CardHeader>
-            <CardTitle>Services</CardTitle>
-            <CardDescription>Add one service per process — frontend, backend, worker, etc.</CardDescription>
+            <CardTitle>{isGithubImport ? "Detected Architecture" : "Services"}</CardTitle>
+            <CardDescription>
+              {isGithubImport ? "Review what we found, then edit anything before deploying." : "Add one service per process — frontend, backend, worker, etc."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {(detected?.database || detected?.redis) && (
+              <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+                {detected.database && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={addDatabase} onChange={(e) => setAddDatabase(e.target.checked)} className="h-4 w-4" />
+                    <Database className="h-3.5 w-3.5 text-primary" />
+                    <span>Provision {detected.database.engine === "POSTGRESQL" ? "PostgreSQL" : "MySQL"} — {detected.database.reason}</span>
+                  </label>
+                )}
+                {detected.redis && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={addRedis} onChange={(e) => setAddRedis(e.target.checked)} className="h-4 w-4" />
+                    <Layers className="h-3.5 w-3.5 text-primary" />
+                    <span>Provision Redis — {detected.redis.reason}</span>
+                  </label>
+                )}
+              </div>
+            )}
             {services.map((s) => (
               <div key={s.id} className="flex flex-col gap-3 rounded-md border border-border p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <Server className="h-4 w-4 text-primary" /> Service
+                    <Server className="h-4 w-4 text-primary" /> {s.framework && s.framework !== "UNKNOWN" ? s.framework.replace(/_/g, " ") : "Service"}
                   </div>
                   {services.length > 1 && (
                     <button onClick={() => removeService(s.id)} className="text-muted-foreground hover:text-destructive">
@@ -281,6 +397,24 @@ function EmptyProjectWizard() {
                 <span className="text-muted-foreground">{formatCurrency(RESOURCE_PRESETS.find((p) => p.id === s.resourcePreset)?.estimatedMonthlyUsd ?? 0)}/mo</span>
               </div>
             ))}
+            {addDatabase && detected?.database && (
+              <div className="flex items-center justify-between rounded-md border border-border p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Database className="h-3.5 w-3.5 text-primary" />
+                  <span className="font-medium">{detected.database.engine === "POSTGRESQL" ? "PostgreSQL" : "MySQL"}</span>
+                </div>
+                <span className="text-muted-foreground">{formatCurrency(5)}/mo</span>
+              </div>
+            )}
+            {addRedis && (
+              <div className="flex items-center justify-between rounded-md border border-border p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-primary" />
+                  <span className="font-medium">Redis</span>
+                </div>
+                <span className="text-muted-foreground">{formatCurrency(2)}/mo</span>
+              </div>
+            )}
             <div className="flex items-center justify-between border-t border-border pt-4 text-sm">
               <span className="font-medium">Estimated Monthly Cost</span>
               <span className="text-lg font-semibold">{formatCurrency(estimatedCost)}</span>

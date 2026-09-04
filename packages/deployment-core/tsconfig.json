@@ -2,7 +2,14 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // Cleared: the base config's `paths` maps @clouddeploy/* to sibling
+    // packages' TS *source*, which is right for apps (editor/type-check
+    // convenience) but wrong here — it would pull types' source into this
+    // package's compile and blow up `rootDir`. Resolve cross-package
+    // imports the normal way instead: via node_modules -> that package's
+    // built dist/ (see each package's "main"/"types" fields).
+    "paths": {}
   },
   "include": ["src"]
 }

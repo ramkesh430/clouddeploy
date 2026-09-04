@@ -19,6 +19,7 @@ import { RedisDbModule } from "./redis-db/redis-db.module";
 import { StorageModule } from "./storage/storage.module";
 import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
 import { BillingModule } from "./billing/billing.module";
+import { GithubModule } from "./github/github.module";
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { BillingModule } from "./billing/billing.module";
     StorageModule,
     CronJobsModule,
     BillingModule,
+    GithubModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

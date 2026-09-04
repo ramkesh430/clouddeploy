@@ -35,7 +35,12 @@ export class DeploymentsService {
     return deployment;
   }
 
-  async create(dto: CreateDeploymentDto, triggeredById: string, isAutoDeploy = false) {
+  async create(
+    dto: CreateDeploymentDto,
+    triggeredById: string | undefined,
+    isAutoDeploy = false,
+    commitOverride?: { sha: string; message: string },
+  ) {
     const project = await this.prisma.project.findUnique({
       where: { id: dto.projectId },
       include: { repository: true },
@@ -48,8 +53,8 @@ export class DeploymentsService {
         serviceId: dto.serviceId,
         environment: dto.environment ?? "PRODUCTION",
         branch: dto.branch ?? project.repository?.defaultBranch ?? "main",
-        commitSha: this.fakeCommitSha(),
-        commitMessage: isAutoDeploy ? "Auto-deploy on push" : "Manual deploy",
+        commitSha: commitOverride?.sha ?? this.fakeCommitSha(),
+        commitMessage: commitOverride?.message ?? (isAutoDeploy ? "Auto-deploy on push" : "Manual deploy"),
         triggeredById,
         isAutoDeploy,
         status: "QUEUED",

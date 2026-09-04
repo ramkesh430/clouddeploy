@@ -141,6 +141,15 @@ export class RolesGuard implements CanActivate {
       });
       return cronJob?.project.organizationId;
     }
+
+    const connectionId = request.params?.connectionId ?? request.query?.connectionId ?? request.body?.connectionId;
+    if (connectionId) {
+      const connection = await this.prisma.gitProviderConnection.findUnique({
+        where: { id: connectionId },
+        select: { organizationId: true },
+      });
+      return connection?.organizationId;
+    }
     return undefined;
   }
 }

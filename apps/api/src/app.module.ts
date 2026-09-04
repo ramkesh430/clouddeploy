@@ -26,6 +26,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { UsageModule } from "./usage/usage.module";
 import { AlertsModule } from "./alerts/alerts.module";
 import { MetricsModule } from "./metrics/metrics.module";
+import { TemplatesModule } from "./templates/templates.module";
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { MetricsModule } from "./metrics/metrics.module";
     UsageModule,
     AlertsModule,
     MetricsModule,
+    TemplatesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

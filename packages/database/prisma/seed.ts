@@ -318,6 +318,184 @@ async function main() {
     ],
   });
 
+  // ── Template marketplace ─────────────────────────────────────────────
+  // servicesJson is untyped at the schema level (jsonb) — its contract is
+  // TemplateDefinition in apps/api/src/templates/template-definition.ts.
+  // Every template deploys through the exact same real provisioning code
+  // as a hand-built project (real Database/Redis when needed, real
+  // generated secrets, a real queued Deployment) — the only thing that's
+  // template-specific is which public Docker image and env var names to
+  // use, since the underlying container-run step is the same simulated
+  // step every deployment in this MVP goes through (see README).
+  const categoryDefs = [
+    { name: "Automation", slug: "automation" },
+    { name: "Headless CMS", slug: "headless-cms" },
+    { name: "Analytics & BI", slug: "analytics-bi" },
+    { name: "Monitoring", slug: "monitoring" },
+    { name: "CMS & Blogging", slug: "cms-blogging" },
+    { name: "Security", slug: "security" },
+  ];
+  const categories: Record<string, { id: string }> = {};
+  for (const c of categoryDefs) {
+    categories[c.slug] = await prisma.templateCategory.upsert({ where: { slug: c.slug }, create: c, update: { name: c.name } });
+  }
+
+  const templateDefs = [
+    {
+      slug: "n8n",
+      name: "n8n",
+      categorySlug: "automation",
+      description: "Workflow automation platform — connect APIs and automate tasks with a visual editor.",
+      logoUrl: "https://cdn.simpleicons.org/n8n",
+      isFeatured: true,
+      estimatedMonthlyUsd: 7,
+      requiredEnvVars: ["N8N_ENCRYPTION_KEY"],
+      servicesJson: {
+        service: { name: "n8n", dockerImage: "n8nio/n8n:latest", port: 5678, healthCheckPath: "/healthz" },
+        needsDatabase: true,
+        databaseEnvVars: {
+          host: "DB_POSTGRESDB_HOST",
+          port: "DB_POSTGRESDB_PORT",
+          database: "DB_POSTGRESDB_DATABASE",
+          username: "DB_POSTGRESDB_USER",
+          password: "DB_POSTGRESDB_PASSWORD",
+        },
+        staticEnvVars: { DB_TYPE: "postgresdb" },
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "strapi",
+      name: "Strapi",
+      categorySlug: "headless-cms",
+      description: "Open-source headless CMS for building customizable APIs and content backends.",
+      logoUrl: "https://cdn.simpleicons.org/strapi",
+      isFeatured: true,
+      estimatedMonthlyUsd: 7,
+      requiredEnvVars: ["APP_KEYS", "API_TOKEN_SALT", "ADMIN_JWT_SECRET", "TRANSFER_TOKEN_SALT", "JWT_SECRET"],
+      servicesJson: {
+        service: { name: "strapi", dockerImage: "strapi/strapi:latest", port: 1337, healthCheckPath: "/_health" },
+        needsDatabase: true,
+        databaseEnvVars: {
+          host: "DATABASE_HOST",
+          port: "DATABASE_PORT",
+          database: "DATABASE_NAME",
+          username: "DATABASE_USERNAME",
+          password: "DATABASE_PASSWORD",
+        },
+        staticEnvVars: { DATABASE_CLIENT: "postgres" },
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "directus",
+      name: "Directus",
+      categorySlug: "headless-cms",
+      description: "Instant REST + GraphQL APIs and a no-code data studio on top of your own database.",
+      logoUrl: "https://cdn.simpleicons.org/directus",
+      isFeatured: false,
+      estimatedMonthlyUsd: 7,
+      requiredEnvVars: ["KEY", "SECRET"],
+      servicesJson: {
+        service: { name: "directus", dockerImage: "directus/directus:latest", port: 8055, healthCheckPath: "/server/health" },
+        needsDatabase: true,
+        databaseEnvVars: {
+          host: "DB_HOST",
+          port: "DB_PORT",
+          database: "DB_DATABASE",
+          username: "DB_USER",
+          password: "DB_PASSWORD",
+        },
+        staticEnvVars: { DB_CLIENT: "pg" },
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "metabase",
+      name: "Metabase",
+      categorySlug: "analytics-bi",
+      description: "Open-source business intelligence tool for dashboards and ad-hoc querying.",
+      logoUrl: "https://cdn.simpleicons.org/metabase",
+      isFeatured: true,
+      estimatedMonthlyUsd: 10,
+      requiredEnvVars: [],
+      servicesJson: {
+        service: { name: "metabase", dockerImage: "metabase/metabase:latest", port: 3000, healthCheckPath: "/api/health" },
+        needsDatabase: true,
+        databaseEnvVars: { connectionUrl: "MB_DB_CONNECTION_URI" },
+        staticEnvVars: { MB_DB_TYPE: "postgres" },
+        resourcePreset: "developer",
+      },
+    },
+    {
+      slug: "grafana",
+      name: "Grafana",
+      categorySlug: "monitoring",
+      description: "Dashboards and visualization for metrics, logs, and traces from any data source.",
+      logoUrl: "https://cdn.simpleicons.org/grafana",
+      isFeatured: false,
+      estimatedMonthlyUsd: 5,
+      requiredEnvVars: ["GF_SECURITY_ADMIN_PASSWORD"],
+      servicesJson: {
+        service: { name: "grafana", dockerImage: "grafana/grafana:latest", port: 3000, healthCheckPath: "/api/health" },
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "uptime-kuma",
+      name: "Uptime Kuma",
+      categorySlug: "monitoring",
+      description: "Self-hosted uptime monitoring with status pages and multi-channel alerting.",
+      logoUrl: "https://cdn.simpleicons.org/uptimekuma",
+      isFeatured: false,
+      estimatedMonthlyUsd: 5,
+      requiredEnvVars: [],
+      servicesJson: {
+        service: { name: "uptime-kuma", dockerImage: "louislam/uptime-kuma:latest", port: 3001, healthCheckPath: "/" },
+        resourcePreset: "nano",
+      },
+    },
+    {
+      slug: "ghost",
+      name: "Ghost",
+      categorySlug: "cms-blogging",
+      description: "Modern publishing platform for blogs and newsletters.",
+      logoUrl: "https://cdn.simpleicons.org/ghost",
+      isFeatured: true,
+      estimatedMonthlyUsd: 5,
+      requiredEnvVars: [],
+      servicesJson: {
+        service: { name: "ghost", dockerImage: "ghost:5", port: 2368, healthCheckPath: "/" },
+        staticEnvVars: {
+          database__client: "sqlite3",
+          database__connection__filename: "/var/lib/ghost/content/data/ghost.db",
+          database__useNullAsDefault: "true",
+        },
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "vaultwarden",
+      name: "Vaultwarden",
+      categorySlug: "security",
+      description: "Lightweight, Bitwarden-compatible self-hosted password manager server.",
+      logoUrl: "https://cdn.simpleicons.org/vaultwarden",
+      isFeatured: false,
+      estimatedMonthlyUsd: 5,
+      requiredEnvVars: ["ADMIN_TOKEN"],
+      servicesJson: {
+        service: { name: "vaultwarden", dockerImage: "vaultwarden/server:latest", port: 80, healthCheckPath: "/alive" },
+        resourcePreset: "nano",
+      },
+    },
+  ];
+
+  for (const t of templateDefs) {
+    const { categorySlug, ...rest } = t;
+    const data = { ...rest, categoryId: categories[categorySlug]!.id };
+    await prisma.template.upsert({ where: { slug: t.slug }, create: data, update: data });
+  }
+
   console.log("Seed complete:");
   console.log(`  Admin login: admin@clouddeploy.dev / Password123!`);
   console.log(`  Demo login:  demo@clouddeploy.dev / Password123!`);

@@ -45,23 +45,29 @@ export class DeploymentProcessor extends WorkerHost {
       return;
     }
 
-    // A rollback pre-populates a SUCCEEDED Build row with the image it's
-    // reusing (see DeploymentsService.rollback) — detect that and skip
-    // straight past the clone/build steps rather than rebuilding source
-    // that already built successfully once.
+    // A rollback (see DeploymentsService.rollback) or a template deploy
+    // (see TemplatesService.deploy — a pre-built public image needs no
+    // build either) both pre-populate a SUCCEEDED Build row with the image
+    // to reuse — detect that and skip straight past the clone/build steps
+    // rather than rebuilding source that either already built successfully
+    // once, or was never built from source in the first place.
     const existingBuild = await this.prisma.build.findUnique({ where: { deploymentId } });
-    const isRollback = existingBuild?.status === "SUCCEEDED" && !!existingBuild.dockerImageTag;
+    const reusesImage = existingBuild?.status === "SUCCEEDED" && !!existingBuild.dockerImageTag;
+    const isTemplateDeploy = !!deployment.commitSha?.startsWith("template:");
+    const isRollback = reusesImage && !isTemplateDeploy;
 
     const BUILD_STEP_KEYS = new Set(["clone", "analyze", "install", "build_frontend", "build_backend", "docker_image"]);
-    const pipeline = isRollback ? DEPLOYMENT_PIPELINE.filter((s) => !BUILD_STEP_KEYS.has(s.key)) : DEPLOYMENT_PIPELINE;
+    const pipeline = reusesImage ? DEPLOYMENT_PIPELINE.filter((s) => !BUILD_STEP_KEYS.has(s.key)) : DEPLOYMENT_PIPELINE;
 
-    if (!isRollback) {
+    if (!reusesImage) {
       await this.prisma.build.create({ data: { deploymentId, status: "RUNNING", startedAt: new Date() } });
     }
-    await this.updateStatus(deploymentId, isRollback ? "DEPLOYING" : "CLONING", 0, isRollback ? "Start Containers" : "Clone Repository");
+    await this.updateStatus(deploymentId, reusesImage ? "DEPLOYING" : "CLONING", 0, reusesImage ? "Start Containers" : "Clone Repository");
 
     if (isRollback) {
       await this.log(deploymentId, "INFO", `Rolling back — reusing existing image ${existingBuild!.dockerImageTag} (no rebuild)`);
+    } else if (isTemplateDeploy) {
+      await this.log(deploymentId, "INFO", `Deploying from template — using pre-built image ${existingBuild!.dockerImageTag} (no build needed)`);
     } else {
       await this.log(deploymentId, "INFO", `Starting deployment for ${deployment.project.name} (${deployment.branch}@${deployment.commitSha})`);
     }
@@ -93,7 +99,7 @@ export class DeploymentProcessor extends WorkerHost {
         }
       }
 
-      if (!isRollback) {
+      if (!reusesImage) {
         const dockerImageTag = `clouddeploy/${deployment.project.slug}:${deployment.commitSha}`;
         await this.prisma.build.update({
           where: { deploymentId },
@@ -166,10 +172,10 @@ export class DeploymentProcessor extends WorkerHost {
         where: { id: deploymentId },
         data: { status: "FAILED", errorMessage: (err as Error).message, finishedAt: new Date() },
       });
-      // On rollback, the build stays SUCCEEDED (it's the reused image from a
-      // deployment that already built and ran successfully) — only a fresh
-      // build's own failure should mark the Build row FAILED.
-      if (!isRollback) {
+      // When reusing an image (rollback or template deploy), the build stays
+      // SUCCEEDED — it's a known-good image, not something that just failed
+      // to build — only a fresh build's own failure should mark it FAILED.
+      if (!reusesImage) {
         await this.prisma.build.update({ where: { deploymentId }, data: { status: "FAILED", finishedAt: new Date() } });
       }
       this.gateway.emitStatus(deploymentId, { status: "FAILED", progressPct: deployment.progressPct, currentStep: null });

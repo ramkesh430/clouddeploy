@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Database, Layers, Rocket } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ export default function TemplatesPage() {
                 <Card key={t.id} className="flex flex-col">
                   <CardContent className="flex flex-1 flex-col gap-3 p-5">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
+                      <Link href={`/templates/${t.id}`} className="flex items-center gap-2.5 hover:opacity-80">
                         {t.logoUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={t.logoUrl} alt="" className="h-8 w-8 rounded object-contain" />
@@ -50,7 +51,7 @@ export default function TemplatesPage() {
                           </div>
                         )}
                         <p className="font-semibold">{t.name}</p>
-                      </div>
+                      </Link>
                       {t.isFeatured && <Badge variant="secondary">Featured</Badge>}
                     </div>
                     <p className="flex-1 text-sm text-muted-foreground">{t.description}</p>

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnav
 import { ConfigService } from "@nestjs/config";
 import Stripe from "stripe";
 import { PrismaService } from "../prisma/prisma.service";
+import { ActivityLogService } from "../activity-log/activity-log.service";
 
 @Injectable()
 export class BillingService {
@@ -11,6 +12,7 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly activityLog: ActivityLogService,
   ) {}
 
   private isConfigured(): boolean {
@@ -114,7 +116,15 @@ export class BillingService {
     }
     const stripe = this.getStripe();
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
-    return this.prisma.subscription.update({ where: { organizationId }, data: { cancelAtPeriodEnd: true } });
+    const updated = await this.prisma.subscription.update({ where: { organizationId }, data: { cancelAtPeriodEnd: true } });
+
+    await this.activityLog.log({
+      organizationId,
+      action: "subscription.changed",
+      resourceType: "Subscription",
+      resourceId: updated.id,
+    });
+    return updated;
   }
 
   /** Verifies the Stripe signature and applies the event to our records. */
@@ -135,6 +145,12 @@ export class BillingService {
             where: { organizationId },
             data: { stripeSubscriptionId: session.subscription as string, status: "ACTIVE" },
           });
+          await this.activityLog.log({
+            organizationId,
+            action: "subscription.changed",
+            resourceType: "Subscription",
+            resourceId: session.subscription as string,
+          });
         }
         break;
       }
@@ -153,6 +169,12 @@ export class BillingService {
               currentPeriodEnd: new Date(sub.current_period_end * 1000),
               cancelAtPeriodEnd: sub.cancel_at_period_end,
             },
+          });
+          await this.activityLog.log({
+            organizationId: existing.organizationId,
+            action: "subscription.changed",
+            resourceType: "Subscription",
+            resourceId: existing.id,
           });
         }
         break;

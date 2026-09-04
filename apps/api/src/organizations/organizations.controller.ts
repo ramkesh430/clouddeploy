@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -52,6 +52,19 @@ export class OrganizationsController {
     @Body() dto: InviteMemberDto,
   ) {
     return this.organizationsService.inviteMember(organizationId, user.id, dto);
+  }
+
+  @Patch(":organizationId/members/:memberId/role")
+  @UseGuards(RolesGuard)
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: "Change a workspace member's role" })
+  updateMemberRole(
+    @Param("organizationId") organizationId: string,
+    @Param("memberId") memberId: string,
+    @Body("role") role: OrgRole,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.organizationsService.updateMemberRole(organizationId, memberId, role, user.id);
   }
 
   @Delete(":organizationId/members/:memberId")

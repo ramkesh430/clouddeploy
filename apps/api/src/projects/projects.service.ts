@@ -1,15 +1,34 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { UsageService } from "../usage/usage.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usage: UsageService,
+  ) {}
 
-  async list(organizationId: string) {
+  /**
+   * OWNER/ADMIN/BILLING_MANAGER see every project in the workspace. A
+   * DEVELOPER or VIEWER only sees projects they created or were explicitly
+   * granted access to via ProjectMember — this is the actual behavioral
+   * difference "project-level access" makes; without it, org-level roles
+   * alone would give every developer visibility into every project.
+   */
+  async list(organizationId: string, requestingUserId?: string, requestingOrgRole?: string) {
+    const restrictToGrantedProjects = requestingUserId && requestingOrgRole && ["DEVELOPER", "VIEWER"].includes(requestingOrgRole);
+
     return this.prisma.project.findMany({
-      where: { organizationId, deletedAt: null },
+      where: {
+        organizationId,
+        deletedAt: null,
+        ...(restrictToGrantedProjects
+          ? { OR: [{ createdBy: requestingUserId }, { members: { some: { userId: requestingUserId } } }] }
+          : {}),
+      },
       include: {
         repository: true,
         services: { select: { id: true, name: true, type: true, framework: true, status: true } },
@@ -27,17 +46,11 @@ export class ProjectsService {
       throw new ConflictException("A project with this slug already exists in this workspace");
     }
 
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { organizationId },
-      include: { plan: true },
-    });
-    if (subscription) {
-      const activeCount = await this.prisma.project.count({ where: { organizationId, deletedAt: null } });
-      if (activeCount >= subscription.plan.maxProjects) {
-        throw new BadRequestException(
-          `Your ${subscription.plan.name} plan is limited to ${subscription.plan.maxProjects} projects. Upgrade to create more.`,
-        );
-      }
+    const projectLimit = await this.usage.checkLimit(organizationId, "projects");
+    if (!projectLimit.allowed) {
+      throw new BadRequestException(
+        `Your plan is limited to ${projectLimit.limit} project${projectLimit.limit === 1 ? "" : "s"}. Upgrade to create more.`,
+      );
     }
 
     return this.prisma.project.create({
@@ -52,7 +65,7 @@ export class ProjectsService {
     });
   }
 
-  async findOne(projectId: string) {
+  async findOne(projectId: string, requestingUserId?: string, requestingOrgRole?: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
       include: {
@@ -63,6 +76,18 @@ export class ProjectsService {
       },
     });
     if (!project) throw new NotFoundException("Project not found");
+
+    if (requestingUserId && requestingOrgRole && ["DEVELOPER", "VIEWER"].includes(requestingOrgRole)) {
+      const hasAccess =
+        project.createdBy === requestingUserId ||
+        (await this.prisma.projectMember.findUnique({
+          where: { projectId_userId: { projectId, userId: requestingUserId } },
+        })) !== null;
+      if (!hasAccess) {
+        throw new NotFoundException("Project not found");
+      }
+    }
+
     return project;
   }
 
@@ -90,6 +115,33 @@ export class ProjectsService {
   async remove(projectId: string) {
     await this.assertExists(projectId);
     return this.prisma.project.update({ where: { id: projectId }, data: { deletedAt: new Date() } });
+  }
+
+  async listMembers(projectId: string) {
+    return this.prisma.projectMember.findMany({
+      where: { projectId },
+      include: { user: { select: { id: true, fullName: true, email: true, avatarUrl: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  async addMember(projectId: string, userId: string) {
+    await this.assertExists(projectId);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
+
+    return this.prisma.projectMember.upsert({
+      where: { projectId_userId: { projectId, userId } },
+      create: { projectId, userId },
+      update: {},
+    });
+  }
+
+  async removeMember(projectId: string, memberId: string) {
+    const member = await this.prisma.projectMember.findFirst({ where: { id: memberId, projectId } });
+    if (!member) throw new NotFoundException("Project member not found");
+    await this.prisma.projectMember.delete({ where: { id: memberId } });
+    return { removed: true };
   }
 
   private async assertExists(projectId: string) {

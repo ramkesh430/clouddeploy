@@ -3,22 +3,44 @@ import { RESOURCE_PRESETS } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateServiceDto } from "./dto/create-service.dto";
 import { UpdateServiceDto } from "./dto/update-service.dto";
+import { WebhooksService } from "../webhooks/webhooks.service";
 
 @Injectable()
 export class ServicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly webhooks: WebhooksService,
+  ) {}
 
   async listByProject(projectId: string) {
     return this.prisma.service.findMany({
       where: { projectId, deletedAt: null },
-      include: { redisInstance: { select: { id: true } }, database: { select: { id: true } } },
+      include: {
+        redisInstance: { select: { id: true } },
+        database: { select: { id: true } },
+        worker: { select: { id: true, queueName: true, concurrency: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  async listWorkers(projectId: string) {
+    return this.prisma.service.findMany({
+      where: { projectId, deletedAt: null, type: "WORKER" },
+      include: { worker: true, deployments: { orderBy: { createdAt: "desc" }, take: 1 } },
       orderBy: { createdAt: "asc" },
     });
   }
 
   async create(dto: CreateServiceDto) {
     const preset = RESOURCE_PRESETS.find((p) => p.id === (dto.resourcePreset ?? "starter"))!;
-    return this.prisma.service.create({
+    // WORKER services are background processes, never web-facing — no port,
+    // no health check path, no public URL is ever assigned to them (the
+    // deployment pipeline only ever sets Project.productionUrl, not a
+    // per-service URL, so this is a real invariant, not just a default).
+    const isWorker = dto.type === "WORKER";
+
+    const service = await this.prisma.service.create({
       data: {
         projectId: dto.projectId,
         name: dto.name,
@@ -29,8 +51,9 @@ export class ServicesService {
         branch: dto.branch ?? "main",
         buildCommand: dto.buildCommand,
         startCommand: dto.startCommand,
-        port: dto.port,
-        healthCheckPath: dto.healthCheckPath ?? "/",
+        port: isWorker ? undefined : dto.port,
+        healthCheckPath: isWorker ? undefined : (dto.healthCheckPath ?? "/"),
+        isPrivate: isWorker ? true : undefined,
         cpuCores: preset.cpuCores,
         ramMb: preset.ramMb,
         diskMb: preset.diskMb,
@@ -38,6 +61,14 @@ export class ServicesService {
         status: "QUEUED",
       },
     });
+
+    if (isWorker) {
+      await this.prisma.worker.create({
+        data: { serviceId: service.id, queueName: dto.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase(), concurrency: 1 },
+      });
+    }
+
+    return service;
   }
 
   async findOne(serviceId: string) {
@@ -68,11 +99,21 @@ export class ServicesService {
   }
 
   async restart(serviceId: string) {
-    await this.assertExists(serviceId);
-    return this.prisma.service.update({
+    const service = await this.assertExists(serviceId);
+    const updated = await this.prisma.service.update({
       where: { id: serviceId },
       data: { status: "RUNNING", crashCount: 0 },
     });
+    const project = await this.prisma.project.findUnique({ where: { id: service.projectId }, select: { organizationId: true } });
+    if (project) {
+      await this.webhooks.dispatch(
+        project.organizationId,
+        "service.restarted",
+        { serviceId, serviceName: service.name },
+        service.projectId,
+      );
+    }
+    return updated;
   }
 
   async remove(serviceId: string) {

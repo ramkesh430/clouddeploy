@@ -64,12 +64,15 @@ export class RedisDbService {
 
     this.redisAdmin
       .createTenantUser(username, password)
-      .then(() =>
-        Promise.all([
+      .then(async () => {
+        await Promise.all([
           this.prisma.redisInstance.update({ where: { id: instance.id }, data: { status: "RUNNING" } }),
           this.prisma.service.update({ where: { id: service.id }, data: { status: "RUNNING" } }),
-        ]),
-      )
+        ]);
+        if (dto.attachToServiceId) {
+          await this.attachToService(instance.id, dto.attachToServiceId);
+        }
+      })
       .catch(async (err) => {
         this.logger.error(`Failed to provision Redis ACL user "${username}": ${err.message}`);
         await this.prisma.redisInstance.update({ where: { id: instance.id }, data: { status: "FAILED" } });
@@ -92,6 +95,38 @@ export class RedisDbService {
       connectionUrl: `redis://${username}:${password}@${instance.privateHost}:${instance.port}`,
       note: "This ACL user can only read/write keys under its own prefix — prefix every key with the keyPrefix shown above.",
     };
+  }
+
+  /** Writes REDIS_URL as an encrypted environment variable on the target service. */
+  async attachToService(redisInstanceId: string, serviceId: string) {
+    const instance = await this.assertExists(redisInstanceId);
+    const service = await this.prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service) throw new NotFoundException("Service not found");
+
+    const connection = await this.getConnectionInfo(redisInstanceId);
+    const key = "REDIS_URL";
+    const valueCipher = encryptSecret(connection.connectionUrl, this.config.getOrThrow("ENCRYPTION_KEY"));
+
+    await this.prisma.environmentVariable.upsert({
+      where: {
+        projectId_serviceId_environment_key: {
+          projectId: service.projectId,
+          serviceId,
+          environment: "PRODUCTION",
+          key,
+        } as never,
+      },
+      create: { projectId: service.projectId, serviceId, environment: "PRODUCTION", key, valueCipher, isSecret: true },
+      update: { valueCipher },
+    });
+
+    return { attached: true, serviceId, key };
+  }
+
+  async getMetrics(redisInstanceId: string) {
+    const instance = await this.assertExists(redisInstanceId);
+    const username = this.deriveUsername(instance.name);
+    return this.redisAdmin.getMetrics(username);
   }
 
   async restart(redisInstanceId: string) {

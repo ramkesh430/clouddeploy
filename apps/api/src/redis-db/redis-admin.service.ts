@@ -63,4 +63,29 @@ export class RedisAdminService {
     const client = this.getAdminClient();
     return (await client.ping()) === "PONG";
   }
+
+  /** Real metrics: an accurate count of keys under this tenant's own
+   * prefix (via SCAN, not the O(N) blocking KEYS command), plus the
+   * shared server's total memory usage — labeled as server-wide since
+   * Redis doesn't track per-ACL-user memory. */
+  async getMetrics(username: string): Promise<{ keyCount: number; serverUsedMemoryBytes: number; serverMaxMemoryBytes: number }> {
+    const client = this.getAdminClient();
+    let keyCount = 0;
+    let cursor = "0";
+    do {
+      const [next, keys] = await client.scan(cursor, "MATCH", `${username}:*`, "COUNT", "500");
+      keyCount += keys.length;
+      cursor = next;
+    } while (cursor !== "0");
+
+    const info = await client.info("memory");
+    const usedMemory = /used_memory:(\d+)/.exec(info)?.[1];
+    const maxMemory = /maxmemory:(\d+)/.exec(info)?.[1];
+
+    return {
+      keyCount,
+      serverUsedMemoryBytes: usedMemory ? Number(usedMemory) : 0,
+      serverMaxMemoryBytes: maxMemory ? Number(maxMemory) : 0,
+    };
+  }
 }

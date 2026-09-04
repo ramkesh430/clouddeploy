@@ -149,6 +149,7 @@ model Organization {
   paymentMethods         PaymentMethod[]
   supportTickets         SupportTicket[]
   abuseReports            AbuseReport[]
+  alertRules              AlertRule[]
   templates              Template[]
   savedQueries            SavedQuery[]
 
@@ -434,6 +435,7 @@ model Service {
   envVars        EnvironmentVariable[]
   containers     Container[]
   metrics        Metric[]
+  metricRollups  MetricRollup[]
   cronJobs       CronJob[]
   worker         Worker?
   database       Database?
@@ -1030,6 +1032,68 @@ model Metric {
 
   @@index([serviceId, timestamp])
   @@map("metrics")
+}
+
+enum MetricPeriod {
+  HOURLY
+  DAILY
+}
+
+// Downsampled metric history. Raw Metric rows are kept at full resolution
+// for a short window (see MetricsRetentionService) and rolled up here so
+// older trend data survives at bounded storage cost — hourly buckets roll
+// up raw samples, daily buckets roll up hourly buckets.
+model MetricRollup {
+  id          String       @id @default(cuid())
+  serviceId   String
+  period      MetricPeriod
+  periodStart DateTime
+  avgCpuPct   Float?
+  maxCpuPct   Float?
+  avgRamMb    Float?
+  maxRamMb    Float?
+  sampleCount Int          @default(0)
+  createdAt   DateTime     @default(now())
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, period, periodStart])
+  @@index([serviceId, period, periodStart])
+  @@map("metric_rollups")
+}
+
+enum AlertMetric {
+  CPU_PCT
+  RAM_PCT
+  DATABASE_CONNECTIONS
+  DATABASE_STORAGE_PCT
+  REDIS_MEMORY_PCT
+}
+
+enum AlertComparator {
+  GREATER_THAN
+  LESS_THAN
+}
+
+model AlertRule {
+  id               String           @id @default(cuid())
+  organizationId   String
+  projectId        String?
+  serviceId        String?
+  databaseId       String?
+  metric           AlertMetric
+  comparator       AlertComparator  @default(GREATER_THAN)
+  threshold        Float
+  enabled          Boolean          @default(true)
+  lastTriggeredAt  DateTime?
+  cooldownMinutes  Int              @default(30)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("alert_rules")
 }
 
 model UsageRecord {

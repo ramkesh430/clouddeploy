@@ -28,6 +28,7 @@ coverage/
 
 # misc
 .DS_Store
+.claude/
 *.pem
 .vscode/*
 !.vscode/extensions.json

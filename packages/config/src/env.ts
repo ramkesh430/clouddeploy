@@ -49,6 +49,15 @@ export const envSchema = z.object({
 
   COOKIE_SECRET: z.string().min(32).default("dev-only-cookie-secret-change-me-in-prod!!"),
   ENCRYPTION_KEY: z.string().min(32).default("dev-only-encryption-key-change-me-in-prod!"),
+
+  /** Defaults target the local Mailpit container (infra/docker/docker-compose.yml)
+   * which accepts any SMTP auth and exposes a web UI at :8025 to read what was sent. */
+  SMTP_HOST: z.string().default("localhost"),
+  SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default("CloudDeploy <notifications@clouddeploy.local>"),
 });
 
 export type Env = z.infer<typeof envSchema>;

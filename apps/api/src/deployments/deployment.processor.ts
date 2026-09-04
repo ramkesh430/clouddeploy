@@ -5,6 +5,8 @@ import { DEPLOYMENT_PIPELINE } from "@clouddeploy/deployment-core";
 import { PrismaService } from "../prisma/prisma.service";
 import { DeploymentsGateway } from "./deployments.gateway";
 import { DEPLOYMENTS_QUEUE } from "./deployments.service";
+import { WebhooksService } from "../webhooks/webhooks.service";
+import { NotificationsService } from "../notifications/notifications.service";
 
 const STEP_DELAY_MS = 900;
 
@@ -22,12 +24,18 @@ export class DeploymentProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: DeploymentsGateway,
+    private readonly webhooks: WebhooksService,
+    private readonly notifications: NotificationsService,
   ) {
     super();
   }
 
-  async process(job: Job<{ deploymentId: string }>): Promise<void> {
-    const { deploymentId } = job.data;
+  async process(job: Job<{ deploymentId: string } | { projectId: string; branch: string }>): Promise<void> {
+    if (job.name === "cleanup-preview") {
+      return this.cleanupPreview(job.data as { projectId: string; branch: string });
+    }
+
+    const { deploymentId } = job.data as { deploymentId: string };
     const deployment = await this.prisma.deployment.findUnique({
       where: { id: deploymentId },
       include: { project: { include: { services: true } } },
@@ -37,16 +45,40 @@ export class DeploymentProcessor extends WorkerHost {
       return;
     }
 
-    await this.prisma.build.create({ data: { deploymentId, status: "RUNNING", startedAt: new Date() } });
-    await this.updateStatus(deploymentId, "CLONING", 0, "Clone Repository");
-    await this.log(deploymentId, "INFO", `Starting deployment for ${deployment.project.name} (${deployment.branch}@${deployment.commitSha})`);
+    // A rollback pre-populates a SUCCEEDED Build row with the image it's
+    // reusing (see DeploymentsService.rollback) — detect that and skip
+    // straight past the clone/build steps rather than rebuilding source
+    // that already built successfully once.
+    const existingBuild = await this.prisma.build.findUnique({ where: { deploymentId } });
+    const isRollback = existingBuild?.status === "SUCCEEDED" && !!existingBuild.dockerImageTag;
+
+    const BUILD_STEP_KEYS = new Set(["clone", "analyze", "install", "build_frontend", "build_backend", "docker_image"]);
+    const pipeline = isRollback ? DEPLOYMENT_PIPELINE.filter((s) => !BUILD_STEP_KEYS.has(s.key)) : DEPLOYMENT_PIPELINE;
+
+    if (!isRollback) {
+      await this.prisma.build.create({ data: { deploymentId, status: "RUNNING", startedAt: new Date() } });
+    }
+    await this.updateStatus(deploymentId, isRollback ? "DEPLOYING" : "CLONING", 0, isRollback ? "Start Containers" : "Clone Repository");
+
+    if (isRollback) {
+      await this.log(deploymentId, "INFO", `Rolling back — reusing existing image ${existingBuild!.dockerImageTag} (no rebuild)`);
+    } else {
+      await this.log(deploymentId, "INFO", `Starting deployment for ${deployment.project.name} (${deployment.branch}@${deployment.commitSha})`);
+    }
+
+    await this.webhooks.dispatch(
+      deployment.project.organizationId,
+      "deployment.started",
+      { deploymentId, projectId: deployment.projectId, branch: deployment.branch, commitSha: deployment.commitSha },
+      deployment.projectId,
+    );
 
     const services = deployment.project.services.filter((s) => !s.deletedAt);
     const frontendDetected = services.some((s) => ["WEB_SERVICE", "STATIC_SITE"].includes(s.type));
     const backendDetected = services.some((s) => s.type === "API_SERVICE");
 
     try {
-      for (const step of DEPLOYMENT_PIPELINE) {
+      for (const step of pipeline) {
         const status = this.statusForStep(step.key);
         await this.updateStatus(deploymentId, status, step.progressAt, step.label);
 
@@ -61,16 +93,18 @@ export class DeploymentProcessor extends WorkerHost {
         }
       }
 
-      const dockerImageTag = `clouddeploy/${deployment.project.slug}:${deployment.commitSha}`;
-      await this.prisma.build.update({
-        where: { deploymentId },
-        data: {
-          status: "SUCCEEDED",
-          dockerImageTag,
-          registryPath: `${process.env.REGISTRY_URL ?? "localhost:5001"}/${dockerImageTag}`,
-          finishedAt: new Date(),
-        },
-      });
+      if (!isRollback) {
+        const dockerImageTag = `clouddeploy/${deployment.project.slug}:${deployment.commitSha}`;
+        await this.prisma.build.update({
+          where: { deploymentId },
+          data: {
+            status: "SUCCEEDED",
+            dockerImageTag,
+            registryPath: `${process.env.REGISTRY_URL ?? "localhost:5001"}/${dockerImageTag}`,
+            finishedAt: new Date(),
+          },
+        });
+      }
 
       await this.prisma.service.updateMany({
         where: { projectId: deployment.projectId, deletedAt: null },
@@ -99,26 +133,96 @@ export class DeploymentProcessor extends WorkerHost {
 
       this.gateway.emitStatus(deploymentId, { status: "LIVE", progressPct: 100, currentStep: "Deploy Live" });
 
+      const organizationId = deployment.project.organizationId;
+
       await this.prisma.activityLog.create({
         data: {
-          organizationId: (await this.prisma.project.findUnique({ where: { id: deployment.projectId } }))!.organizationId,
+          organizationId,
           projectId: deployment.projectId,
           userId: deployment.triggeredById,
-          action: "deployment.success",
+          action: isRollback ? "deployment.rollback" : "deployment.success",
           resourceType: "Deployment",
           resourceId: deploymentId,
         },
       });
+
+      await this.webhooks.dispatch(
+        organizationId,
+        "deployment.success",
+        { deploymentId, projectId: deployment.projectId, branch: deployment.branch, commitSha: deployment.commitSha, previewUrl },
+        deployment.projectId,
+      );
+
+      const successTitle = `${deployment.project.name} deployed successfully`;
+      const successMessage = `${deployment.branch}@${deployment.commitSha} is now live${isPreview ? " (preview)" : ""}.`;
+      if (deployment.triggeredById) {
+        await this.notifications.notify(organizationId, deployment.triggeredById, "DEPLOYMENT_SUCCESSFUL", successTitle, successMessage);
+      } else {
+        await this.notifications.notifyOrganization(organizationId, "DEPLOYMENT_SUCCESSFUL", successTitle, successMessage);
+      }
     } catch (err) {
       await this.log(deploymentId, "ERROR", `Deployment failed: ${(err as Error).message}`);
       await this.prisma.deployment.update({
         where: { id: deploymentId },
         data: { status: "FAILED", errorMessage: (err as Error).message, finishedAt: new Date() },
       });
-      await this.prisma.build.update({ where: { deploymentId }, data: { status: "FAILED", finishedAt: new Date() } });
+      // On rollback, the build stays SUCCEEDED (it's the reused image from a
+      // deployment that already built and ran successfully) — only a fresh
+      // build's own failure should mark the Build row FAILED.
+      if (!isRollback) {
+        await this.prisma.build.update({ where: { deploymentId }, data: { status: "FAILED", finishedAt: new Date() } });
+      }
       this.gateway.emitStatus(deploymentId, { status: "FAILED", progressPct: deployment.progressPct, currentStep: null });
+
+      const organizationId = deployment.project.organizationId;
+      await this.webhooks.dispatch(
+        organizationId,
+        "deployment.failed",
+        { deploymentId, projectId: deployment.projectId, branch: deployment.branch, error: (err as Error).message },
+        deployment.projectId,
+      );
+      const failTitle = `${deployment.project.name} deployment failed`;
+      const failMessage = `${deployment.branch}@${deployment.commitSha}: ${(err as Error).message}`;
+      if (deployment.triggeredById) {
+        await this.notifications.notify(organizationId, deployment.triggeredById, "DEPLOYMENT_FAILED", failTitle, failMessage);
+      } else {
+        await this.notifications.notifyOrganization(organizationId, "DEPLOYMENT_FAILED", failTitle, failMessage);
+      }
+
       throw err;
     }
+  }
+
+  /** Tears down preview deployments for a branch after its PR closes. */
+  private async cleanupPreview({ projectId, branch }: { projectId: string; branch: string }): Promise<void> {
+    const live = await this.prisma.deployment.findMany({
+      where: { projectId, branch, environment: "PREVIEW", status: "LIVE" },
+    });
+    if (live.length === 0) return;
+
+    await this.prisma.deployment.updateMany({
+      where: { id: { in: live.map((d) => d.id) } },
+      data: { status: "CANCELLED", finishedAt: new Date() },
+    });
+
+    for (const d of live) {
+      await this.log(d.id, "INFO", "Preview environment removed (pull request closed).");
+      this.gateway.emitStatus(d.id, { status: "CANCELLED", progressPct: d.progressPct, currentStep: "Preview removed" });
+    }
+
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { organizationId: true } });
+    if (project) {
+      await this.prisma.activityLog.create({
+        data: {
+          organizationId: project.organizationId,
+          projectId,
+          action: "preview.removed",
+          resourceType: "Deployment",
+          resourceId: live[0]!.id,
+        },
+      });
+    }
+    this.logger.log(`Removed ${live.length} preview deployment(s) for ${projectId}@${branch}`);
   }
 
   private statusForStep(key: string) {

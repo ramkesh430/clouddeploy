@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { decryptSecret } from "@clouddeploy/security";
+import crypto from "node:crypto";
+import { decryptSecret, encryptSecret } from "@clouddeploy/security";
 import { PrismaService } from "../prisma/prisma.service";
 import { PostgresAdminService } from "./postgres-admin.service";
 
@@ -167,6 +168,122 @@ export class DatabaseManagerService {
     } finally {
       await pool.end();
     }
+  }
+
+  /** Real, live metrics — not simulated: actual connection count and
+   * on-disk size for the tenant's own database, queried through their own
+   * connection. */
+  async getMetrics(databaseId: string) {
+    const database = await this.prisma.database.findFirst({ where: { id: databaseId, deletedAt: null } });
+    if (!database) throw new NotFoundException("Database not found");
+    if (database.engine !== "POSTGRESQL") {
+      return { supported: false, reason: "Live metrics currently support PostgreSQL only" };
+    }
+
+    const pool = await this.getTenantPool(databaseId);
+    try {
+      const [connectionsRes, sizeRes] = await Promise.all([
+        pool.query(`SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database()`),
+        pool.query(`SELECT pg_database_size(current_database())::bigint AS bytes`),
+      ]);
+      const connections = connectionsRes.rows[0]?.count ?? 0;
+      const sizeBytes = Number(sizeRes.rows[0]?.bytes ?? 0);
+      const storageLimitBytes = database.storageMb * 1024 * 1024;
+      return {
+        supported: true,
+        connections,
+        sizeBytes,
+        storageLimitBytes,
+        storagePct: storageLimitBytes > 0 ? Math.round((sizeBytes / storageLimitBytes) * 1000) / 10 : 0,
+      };
+    } finally {
+      await pool.end();
+    }
+  }
+
+  /** Real, live session listing from pg_stat_activity for the tenant's own
+   * database — not a stored snapshot, so it always reflects what's
+   * connected right now. */
+  async listConnections(databaseId: string) {
+    const database = await this.prisma.database.findFirst({ where: { id: databaseId, deletedAt: null } });
+    if (!database) throw new NotFoundException("Database not found");
+    if (database.engine !== "POSTGRESQL") {
+      return { supported: false, reason: "Live connections currently support PostgreSQL only" };
+    }
+
+    const pool = await this.getTenantPool(databaseId);
+    try {
+      const res = await pool.query(
+        `SELECT pid, usename, client_addr, state, query, query_start, backend_start
+         FROM pg_stat_activity
+         WHERE datname = current_database() AND pid <> pg_backend_pid()
+         ORDER BY backend_start DESC`,
+      );
+      return {
+        supported: true,
+        connections: res.rows.map((r) => ({
+          pid: r.pid as number,
+          username: r.usename as string,
+          clientAddr: (r.client_addr as string) ?? null,
+          state: r.state as string,
+          query: r.query as string,
+          queryStart: r.query_start as Date | null,
+          connectedAt: r.backend_start as Date,
+        })),
+      };
+    } finally {
+      await pool.end();
+    }
+  }
+
+  // ── Database users: additional scoped Postgres roles ────────────────
+
+  async listUsers(databaseId: string) {
+    const database = await this.prisma.database.findFirst({ where: { id: databaseId, deletedAt: null } });
+    if (!database) throw new NotFoundException("Database not found");
+    return this.prisma.databaseUser.findMany({
+      where: { databaseId },
+      select: { id: true, databaseId: true, username: true, role: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /** Provisions a real, additional Postgres role scoped to this database
+   * (e.g. a read-only credential for an analytics tool) — separate from the
+   * database's own owner role. The generated password is shown once in the
+   * response, matching the pattern used for the database's initial
+   * password and for API keys. */
+  async createUser(databaseId: string, username: string, role: "readonly" | "readwrite") {
+    const database = await this.prisma.database.findFirst({ where: { id: databaseId, deletedAt: null } });
+    if (!database) throw new NotFoundException("Database not found");
+    if (database.engine !== "POSTGRESQL") {
+      throw new BadRequestException("Database users currently support PostgreSQL only");
+    }
+    const existing = await this.prisma.databaseUser.findUnique({
+      where: { databaseId_username: { databaseId, username } },
+    });
+    if (existing) throw new BadRequestException("A user with that username already exists on this database");
+
+    const roleName = `${database.databaseName}_${username}`;
+    const password = crypto.randomBytes(18).toString("base64url");
+    await this.postgresAdmin.createScopedRole(database.databaseName, roleName, password, role, database.username);
+
+    const passwordCipher = encryptSecret(password, this.config.getOrThrow("ENCRYPTION_KEY"));
+    const created = await this.prisma.databaseUser.create({
+      data: { databaseId, username: roleName, passwordCipher, role },
+    });
+    return { ...created, password };
+  }
+
+  async deleteUser(databaseUserId: string) {
+    const dbUser = await this.prisma.databaseUser.findUnique({ where: { id: databaseUserId } });
+    if (!dbUser) throw new NotFoundException("Database user not found");
+    const database = await this.prisma.database.findFirst({ where: { id: dbUser.databaseId, deletedAt: null } });
+    if (!database) throw new NotFoundException("Database not found");
+
+    await this.postgresAdmin.dropScopedRole(database.databaseName, dbUser.username);
+    await this.prisma.databaseUser.delete({ where: { id: databaseUserId } });
+    return { deleted: true };
   }
 
   // ── Saved queries ────────────────────────────────────────────────────

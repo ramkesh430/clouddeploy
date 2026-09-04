@@ -7,6 +7,7 @@ import { CurrentUser, RequestUser } from "../common/decorators/current-user.deco
 import { DatabasesService } from "./databases.service";
 import { DatabaseManagerService } from "./database-manager.service";
 import { CreateDatabaseDto } from "./dto/create-database.dto";
+import { CreateDatabaseUserDto } from "./dto/create-database-user.dto";
 import { OrgRole } from "@clouddeploy/database";
 
 @ApiTags("databases")
@@ -36,6 +37,12 @@ export class DatabasesController {
   @ApiOperation({ summary: "Get database details" })
   findOne(@Param("databaseId") databaseId: string) {
     return this.databasesService.findOne(databaseId);
+  }
+
+  @Get(":databaseId/metrics")
+  @ApiOperation({ summary: "Real live metrics: connection count and on-disk size" })
+  metrics(@Param("databaseId") databaseId: string) {
+    return this.databaseManager.getMetrics(databaseId);
   }
 
   @Get(":databaseId/connection")
@@ -75,8 +82,8 @@ export class DatabasesController {
   @Post(":databaseId/restore")
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: "Restore from a backup" })
-  restore(@Param("databaseId") databaseId: string, @Body("backupId") backupId: string) {
-    return this.databasesService.restoreBackup(databaseId, backupId);
+  restore(@Param("databaseId") databaseId: string, @Body("backupId") backupId: string, @CurrentUser() user: RequestUser) {
+    return this.databasesService.restoreBackup(databaseId, backupId, user.id);
   }
 
   @Delete(":databaseId")
@@ -87,6 +94,32 @@ export class DatabasesController {
   }
 
   // ── Database Manager: table browser + SQL editor ────────────────────
+
+  @Get(":databaseId/connections")
+  @ApiOperation({ summary: "Real live session list from pg_stat_activity" })
+  listConnections(@Param("databaseId") databaseId: string) {
+    return this.databaseManager.listConnections(databaseId);
+  }
+
+  @Get(":databaseId/users")
+  @ApiOperation({ summary: "List additional scoped Postgres roles for this database" })
+  listUsers(@Param("databaseId") databaseId: string) {
+    return this.databaseManager.listUsers(databaseId);
+  }
+
+  @Post(":databaseId/users")
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
+  @ApiOperation({ summary: "Create a real, additional scoped Postgres role (e.g. read-only for analytics)" })
+  createUser(@Param("databaseId") databaseId: string, @Body() dto: CreateDatabaseUserDto) {
+    return this.databaseManager.createUser(databaseId, dto.username, dto.role ?? "readonly");
+  }
+
+  @Delete(":databaseId/users/:databaseUserId")
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
+  @ApiOperation({ summary: "Drop a scoped database user's Postgres role" })
+  deleteUser(@Param("databaseUserId") databaseUserId: string) {
+    return this.databaseManager.deleteUser(databaseUserId);
+  }
 
   @Get(":databaseId/schemas")
   @ApiOperation({ summary: "List schemas" })

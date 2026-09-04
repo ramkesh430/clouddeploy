@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from "@nestjs/config";
 import { S3Adapter } from "@clouddeploy/storage";
 import { PrismaService } from "../prisma/prisma.service";
+import { ActivityLogService } from "../activity-log/activity-log.service";
 import { CreateBucketDto } from "./dto/create-bucket.dto";
 
 @Injectable()
@@ -11,6 +12,7 @@ export class StorageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly activityLog: ActivityLogService,
   ) {}
 
   private getS3(): S3Adapter {
@@ -160,6 +162,13 @@ export class StorageService {
     if (!object) throw new NotFoundException("Object not found");
     await this.getS3().deleteObject(this.physicalBucket(bucket), object.key);
     await this.prisma.storageObject.delete({ where: { id: objectId } });
+
+    await this.activityLog.log({
+      organizationId: bucket.organizationId,
+      action: "storage.object_deleted",
+      resourceType: "StorageObject",
+      resourceId: objectId,
+    });
     return { deleted: true };
   }
 

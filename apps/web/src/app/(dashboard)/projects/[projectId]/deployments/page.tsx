@@ -30,6 +30,8 @@ export default function ProjectDeploymentsPage() {
               <th className="p-4 font-medium">Commit</th>
               <th className="p-4 font-medium">Environment</th>
               <th className="p-4 font-medium">Status</th>
+              <th className="p-4 font-medium">Image</th>
+              <th className="p-4 font-medium">Triggered By</th>
               <th className="p-4 font-medium">Duration</th>
               <th className="p-4 font-medium">Started</th>
               <th className="p-4 font-medium">Actions</th>
@@ -51,6 +53,10 @@ export default function ProjectDeploymentsPage() {
                   <td className="p-4 font-mono text-xs text-muted-foreground">{d.commitSha ?? "—"}</td>
                   <td className="p-4 text-muted-foreground">{d.environment === "PREVIEW" ? "Preview" : "Production"}</td>
                   <td className="p-4"><StatusBadge status={d.status} /></td>
+                  <td className="p-4 max-w-[160px] truncate font-mono text-xs text-muted-foreground" title={d.build?.dockerImageTag ?? undefined}>
+                    {d.build?.dockerImageTag ? d.build.dockerImageTag.split(":").pop() : "—"}
+                  </td>
+                  <td className="p-4 text-muted-foreground">{d.triggeredBy?.fullName ?? (d.isAutoDeploy ? "GitHub push" : "—")}</td>
                   <td className="p-4 text-muted-foreground">{d.durationMs ? `${Math.round(d.durationMs / 1000)}s` : "—"}</td>
                   <td className="p-4 text-muted-foreground">{formatRelativeTime(d.createdAt)}</td>
                   <td className="p-4">
@@ -69,7 +75,7 @@ export default function ProjectDeploymentsPage() {
             })}
             {(deployments ?? []).length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-sm text-muted-foreground">
+                <td colSpan={10} className="p-8 text-center text-sm text-muted-foreground">
                   No deployments yet.
                 </td>
               </tr>
@@ -83,7 +89,7 @@ export default function ProjectDeploymentsPage() {
           <DialogHeader>
             <DialogTitle>Roll back to {rollbackTarget?.label}?</DialogTitle>
             <DialogDescription>
-              Traffic will be re-routed to a fresh deployment of this earlier, healthy version. The current deployment will be marked rolled back.
+              Reuses the exact image from that deployment — no rebuild. Traffic is switched over after a health check, and the current deployment is marked rolled back.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

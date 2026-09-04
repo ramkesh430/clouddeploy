@@ -105,7 +105,7 @@ export class GithubService {
       body: JSON.stringify({
         name: "web",
         active: true,
-        events: ["push"],
+        events: ["push", "pull_request"],
         config: { url: `${apiUrl}/api/v1/github/webhook`, content_type: "json", secret: webhookSecret },
       }),
     });
@@ -140,5 +140,45 @@ export class GithubService {
     );
     this.logger.log(`Auto-deploy triggered for ${payload.repository.full_name}@${pushedBranch} -> deployment ${deployment.id}`);
     return { deployed: true, deploymentId: deployment.id };
+  }
+
+  /** Handles a validated `pull_request` webhook payload — preview
+   * deployments (spec section 98/14): opened/synchronize/reopened deploy
+   * the PR's head branch to its own preview environment; closed schedules
+   * teardown after a delay. */
+  async handlePullRequestEvent(payload: {
+    action: string;
+    number: number;
+    pull_request: { head: { ref: string; sha: string } };
+    repository: { full_name: string };
+  }) {
+    const repository = await this.prisma.repository.findFirst({
+      where: { fullName: payload.repository.full_name },
+      include: { project: true },
+    });
+    if (!repository) {
+      this.logger.warn(`Pull request event for unlinked repository ${payload.repository.full_name}`);
+      return { deployed: false, reason: "repository not linked" };
+    }
+
+    const branch = payload.pull_request.head.ref;
+
+    if (["opened", "synchronize", "reopened"].includes(payload.action)) {
+      const deployment = await this.deploymentsService.create(
+        { projectId: repository.projectId, branch, environment: "PREVIEW" },
+        repository.project.createdBy ?? undefined,
+        true,
+        { sha: payload.pull_request.head.sha.slice(0, 7), message: `PR #${payload.number}: ${branch}` },
+      );
+      this.logger.log(`Preview deployment triggered for PR #${payload.number} (${branch}) -> deployment ${deployment.id}`);
+      return { deployed: true, deploymentId: deployment.id };
+    }
+
+    if (payload.action === "closed") {
+      await this.deploymentsService.schedulePreviewCleanup(repository.projectId, branch);
+      return { deployed: false, cleanupScheduled: true };
+    }
+
+    return { deployed: false, reason: `ignored pull_request action "${payload.action}"` };
   }
 }

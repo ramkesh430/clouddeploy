@@ -21,6 +21,12 @@ export class ServicesController {
     return this.servicesService.listByProject(projectId);
   }
 
+  @Get("workers")
+  @ApiOperation({ summary: "List WORKER-type services for a project — background processes with no public URL" })
+  listWorkers(@Query("projectId") projectId: string) {
+    return this.servicesService.listWorkers(projectId);
+  }
+
   @Post()
   @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
   @ApiOperation({ summary: "Add a service to a project" })

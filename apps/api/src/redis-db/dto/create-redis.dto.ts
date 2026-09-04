@@ -20,4 +20,9 @@ export class CreateRedisDto {
   @IsOptional()
   @IsString()
   maxMemoryPolicy?: string;
+
+  @ApiPropertyOptional({ description: "Service to automatically inject REDIS_URL into once provisioned" })
+  @IsOptional()
+  @IsString()
+  attachToServiceId?: string;
 }

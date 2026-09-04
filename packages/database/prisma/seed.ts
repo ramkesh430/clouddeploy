@@ -7,73 +7,81 @@ async function main() {
   console.log("Seeding CloudDeploy development data...");
 
   // ── Plans ────────────────────────────────────────────────────────────
-  const plans = await Promise.all([
-    prisma.plan.upsert({
-      where: { tier: "FREE" },
-      update: {},
-      create: {
-        tier: "FREE",
-        name: "Free",
-        priceMonthlyCents: 0,
-        priceYearlyCents: 0,
-        maxProjects: 1,
-        maxRamMb: 512,
-        features: { staticSites: true, customDomain: false, backups: false },
+  // upsert's `update` is set equal to `create` (minus the discriminant key)
+  // for every plan below, so re-running this seed against an existing
+  // database actually refreshes limits/features instead of silently
+  // leaving stale rows in place (Prisma upsert does nothing on conflict
+  // if `update` is empty — a real footgun the first version of this
+  // seed had).
+  const planDefs = [
+    {
+      tier: "FREE" as const,
+      name: "Free",
+      priceMonthlyCents: 0,
+      priceYearlyCents: 0,
+      maxProjects: 1,
+      maxRamMb: 512,
+      features: {
+        staticSites: true, customDomain: false, backups: false,
+        maxDatabases: 0, maxTeamMembers: 1, maxStorageGb: 1, maxBuildMinutes: 100, maxBandwidthGb: 10,
       },
-    }),
-    prisma.plan.upsert({
-      where: { tier: "DEVELOPER" },
-      update: {},
-      create: {
-        tier: "DEVELOPER",
-        name: "Developer",
-        priceMonthlyCents: 500,
-        priceYearlyCents: 5000,
-        maxProjects: 5,
-        maxRamMb: 2048,
-        features: { customDomain: true, ssl: true, autoDeploy: true, basicBackups: true },
+    },
+    {
+      tier: "DEVELOPER" as const,
+      name: "Developer",
+      priceMonthlyCents: 500,
+      priceYearlyCents: 5000,
+      maxProjects: 5,
+      maxRamMb: 2048,
+      features: {
+        customDomain: true, ssl: true, autoDeploy: true, basicBackups: true,
+        maxDatabases: 1, maxTeamMembers: 3, maxStorageGb: 10, maxBuildMinutes: 500, maxBandwidthGb: 100,
       },
-    }),
-    prisma.plan.upsert({
-      where: { tier: "PRO" },
-      update: {},
-      create: {
-        tier: "PRO",
-        name: "Pro",
-        priceMonthlyCents: 1500,
-        priceYearlyCents: 15000,
-        maxProjects: 20,
-        maxRamMb: 4096,
-        features: { redis: true, workers: true, cronJobs: true, dailyBackups: true, aiAssistant: true },
+    },
+    {
+      tier: "PRO" as const,
+      name: "Pro",
+      priceMonthlyCents: 1500,
+      priceYearlyCents: 15000,
+      maxProjects: 20,
+      maxRamMb: 4096,
+      features: {
+        redis: true, workers: true, cronJobs: true, dailyBackups: true, aiAssistant: true,
+        maxDatabases: 5, maxTeamMembers: 10, maxStorageGb: 100, maxBuildMinutes: 2000, maxBandwidthGb: 500,
       },
-    }),
-    prisma.plan.upsert({
-      where: { tier: "BUSINESS" },
-      update: {},
-      create: {
-        tier: "BUSINESS",
-        name: "Business",
-        priceMonthlyCents: 4900,
-        priceYearlyCents: 49000,
-        maxProjects: 100,
-        maxRamMb: 16384,
-        features: { teamAccess: true, agencyFeatures: true, advancedMonitoring: true, prioritySupport: true },
+    },
+    {
+      tier: "BUSINESS" as const,
+      name: "Business",
+      priceMonthlyCents: 4900,
+      priceYearlyCents: 49000,
+      maxProjects: 100,
+      maxRamMb: 16384,
+      features: {
+        teamAccess: true, agencyFeatures: true, advancedMonitoring: true, prioritySupport: true,
+        maxDatabases: 25, maxTeamMembers: 50, maxStorageGb: 1000, maxBuildMinutes: 10000, maxBandwidthGb: 5000,
       },
-    }),
-    prisma.plan.upsert({
-      where: { tier: "ENTERPRISE" },
-      update: {},
-      create: {
-        tier: "ENTERPRISE",
-        name: "Enterprise",
-        priceMonthlyCents: 0,
-        priceYearlyCents: 0,
-        maxProjects: 100000,
-        maxRamMb: 1048576,
-        features: { dedicatedInfra: true, privateNetwork: true, sla: true, whiteLabel: true },
+    },
+    {
+      tier: "ENTERPRISE" as const,
+      name: "Enterprise",
+      priceMonthlyCents: 0,
+      priceYearlyCents: 0,
+      maxProjects: 100000,
+      maxRamMb: 1048576,
+      features: {
+        dedicatedInfra: true, privateNetwork: true, sla: true, whiteLabel: true,
+        maxDatabases: 100000, maxTeamMembers: 100000, maxStorageGb: 1000000, maxBuildMinutes: 1000000, maxBandwidthGb: 1000000,
       },
+    },
+  ];
+
+  const plans = await Promise.all(
+    planDefs.map((def) => {
+      const { tier, ...rest } = def;
+      return prisma.plan.upsert({ where: { tier }, update: rest, create: def });
     }),
-  ]);
+  );
   const proPlan = plans.find((p) => p.tier === "PRO")!;
 
   // ── Regions ──────────────────────────────────────────────────────────
@@ -226,24 +234,27 @@ async function main() {
     },
   });
 
-  await prisma.domain.create({
-    data: {
-      organizationId: org.id,
-      projectId: project.id,
-      hostname: "shopfront.clouddeploy.app",
-      type: "PLATFORM",
-      status: "ACTIVE",
-      dnsRecords: {},
-      verifiedAt: new Date(),
-      ssl: {
-        create: {
-          status: "ACTIVE",
-          issuedAt: new Date(),
-          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+  const existingDomain = await prisma.domain.findUnique({ where: { hostname: "shopfront.clouddeploy.app" } });
+  if (!existingDomain) {
+    await prisma.domain.create({
+      data: {
+        organizationId: org.id,
+        projectId: project.id,
+        hostname: "shopfront.clouddeploy.app",
+        type: "PLATFORM",
+        status: "ACTIVE",
+        dnsRecords: {},
+        verifiedAt: new Date(),
+        ssl: {
+          create: {
+            status: "ACTIVE",
+            issuedAt: new Date(),
+            expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+          },
         },
       },
-    },
-  });
+    });
+  }
 
   const deployment = await prisma.deployment.create({
     data: {

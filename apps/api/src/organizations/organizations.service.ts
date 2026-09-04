@@ -1,11 +1,18 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { OrgRole } from "@clouddeploy/database";
 import { PrismaService } from "../prisma/prisma.service";
+import { UsageService } from "../usage/usage.service";
+import { ActivityLogService } from "../activity-log/activity-log.service";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
 import { InviteMemberDto } from "./dto/invite-member.dto";
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usage: UsageService,
+    private readonly activityLog: ActivityLogService,
+  ) {}
 
   async listForUser(userId: string) {
     return this.prisma.organization.findMany({
@@ -53,9 +60,16 @@ export class OrganizationsService {
       throw new ConflictException("This person is already a member or has a pending invite");
     }
 
+    const memberLimit = await this.usage.checkLimit(organizationId, "teamMembers");
+    if (!memberLimit.allowed) {
+      throw new BadRequestException(
+        `Your plan is limited to ${memberLimit.limit} team member${memberLimit.limit === 1 ? "" : "s"}. Upgrade to invite more.`,
+      );
+    }
+
     const user = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
 
-    return this.prisma.organizationMember.create({
+    const member = await this.prisma.organizationMember.create({
       data: {
         organizationId,
         userId: user?.id,
@@ -65,6 +79,34 @@ export class OrganizationsService {
         invitedBy,
       },
     });
+
+    await this.activityLog.log({
+      organizationId,
+      userId: invitedBy,
+      action: "member.invited",
+      resourceType: "OrganizationMember",
+      resourceId: member.id,
+    });
+    return member;
+  }
+
+  async updateMemberRole(organizationId: string, memberId: string, newRole: OrgRole, actingUserId: string) {
+    const member = await this.prisma.organizationMember.findFirst({ where: { id: memberId, organizationId } });
+    if (!member) throw new NotFoundException("Member not found");
+    if (member.role === "OWNER" && member.userId === actingUserId) {
+      throw new ForbiddenException("The workspace owner cannot change their own role");
+    }
+
+    const updated = await this.prisma.organizationMember.update({ where: { id: memberId }, data: { role: newRole } });
+
+    await this.activityLog.log({
+      organizationId,
+      userId: actingUserId,
+      action: "member.role_changed",
+      resourceType: "OrganizationMember",
+      resourceId: memberId,
+    });
+    return updated;
   }
 
   async removeMember(organizationId: string, memberId: string, actingUserId: string) {

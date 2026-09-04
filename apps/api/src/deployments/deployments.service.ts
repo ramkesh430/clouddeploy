@@ -16,7 +16,11 @@ export class DeploymentsService {
   async list(projectId: string) {
     return this.prisma.deployment.findMany({
       where: { projectId },
-      include: { service: { select: { name: true, framework: true } } },
+      include: {
+        service: { select: { name: true, framework: true } },
+        triggeredBy: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+        build: { select: { dockerImageTag: true, status: true } },
+      },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -40,6 +44,7 @@ export class DeploymentsService {
     triggeredById: string | undefined,
     isAutoDeploy = false,
     commitOverride?: { sha: string; message: string },
+    reuseBuild?: { dockerImageTag: string; registryPath: string | null },
   ) {
     const project = await this.prisma.project.findUnique({
       where: { id: dto.projectId },
@@ -61,6 +66,23 @@ export class DeploymentsService {
       },
     });
 
+    // Rollback path: the image already exists from a previous successful
+    // build, so pre-populate a SUCCEEDED Build row — the processor detects
+    // this and skips straight past clone/build to "start containers",
+    // rather than rebuilding source it already built once.
+    if (reuseBuild) {
+      await this.prisma.build.create({
+        data: {
+          deploymentId: deployment.id,
+          status: "SUCCEEDED",
+          dockerImageTag: reuseBuild.dockerImageTag,
+          registryPath: reuseBuild.registryPath,
+          startedAt: new Date(),
+          finishedAt: new Date(),
+        },
+      });
+    }
+
     await this.queue.add("run-deployment", { deploymentId: deployment.id }, { removeOnComplete: 100, removeOnFail: 100 });
     return deployment;
   }
@@ -79,10 +101,17 @@ export class DeploymentsService {
   }
 
   async rollback(deploymentId: string, targetDeploymentId: string, triggeredById: string) {
-    const target = await this.prisma.deployment.findUnique({ where: { id: targetDeploymentId } });
+    const target = await this.prisma.deployment.findUnique({
+      where: { id: targetDeploymentId },
+      include: { build: true },
+    });
     if (!target || target.status !== "LIVE") {
       throw new NotFoundException("Target deployment is not a healthy, live deployment");
     }
+    if (!target.build || target.build.status !== "SUCCEEDED" || !target.build.dockerImageTag) {
+      throw new NotFoundException("Target deployment has no successful build image to roll back to");
+    }
+
     const rollback = await this.create(
       {
         projectId: target.projectId,
@@ -91,6 +120,9 @@ export class DeploymentsService {
         environment: target.environment,
       },
       triggeredById,
+      false,
+      { sha: target.commitSha ?? this.fakeCommitSha(), message: `Rollback to #${target.id.slice(0, 8)}` },
+      { dockerImageTag: target.build.dockerImageTag, registryPath: target.build.registryPath },
     );
     await this.prisma.deployment.update({ where: { id: deploymentId }, data: { status: "ROLLED_BACK" } });
     return rollback;
@@ -101,6 +133,15 @@ export class DeploymentsService {
       where: { id: deploymentId },
       data: { status: "CANCELLED", finishedAt: new Date() },
     });
+  }
+
+  /** Schedules a preview environment's teardown after a configurable delay
+   * (default 30 min, PREVIEW_CLEANUP_DELAY_MS) — used when a GitHub PR
+   * closes. A real BullMQ delayed job, not a timeout, so it survives an API
+   * restart in between. */
+  async schedulePreviewCleanup(projectId: string, branch: string, delayMs?: number) {
+    const delay = delayMs ?? Number(process.env.PREVIEW_CLEANUP_DELAY_MS ?? 30 * 60 * 1000);
+    await this.queue.add("cleanup-preview", { projectId, branch }, { delay, removeOnComplete: 50, removeOnFail: 50 });
   }
 
   private fakeCommitSha(): string {

@@ -150,6 +150,24 @@ export class RolesGuard implements CanActivate {
       });
       return connection?.organizationId;
     }
+
+    const alertRuleId = request.params?.alertRuleId;
+    if (alertRuleId) {
+      const rule = await this.prisma.alertRule.findUnique({ where: { id: alertRuleId }, select: { organizationId: true } });
+      return rule?.organizationId;
+    }
+
+    const apiKeyId = request.params?.apiKeyId;
+    if (apiKeyId) {
+      const apiKey = await this.prisma.aPIKey.findUnique({ where: { id: apiKeyId }, select: { organizationId: true } });
+      return apiKey?.organizationId;
+    }
+
+    const webhookId = request.params?.webhookId;
+    if (webhookId) {
+      const webhook = await this.prisma.webhook.findUnique({ where: { id: webhookId }, select: { organizationId: true } });
+      return webhook?.organizationId;
+    }
     return undefined;
   }
 }

@@ -20,6 +20,12 @@ import { StorageModule } from "./storage/storage.module";
 import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
 import { BillingModule } from "./billing/billing.module";
 import { GithubModule } from "./github/github.module";
+import { ApiKeysModule } from "./api-keys/api-keys.module";
+import { WebhooksModule } from "./webhooks/webhooks.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { UsageModule } from "./usage/usage.module";
+import { AlertsModule } from "./alerts/alerts.module";
+import { MetricsModule } from "./metrics/metrics.module";
 
 @Module({
   imports: [
@@ -48,6 +54,12 @@ import { GithubModule } from "./github/github.module";
     CronJobsModule,
     BillingModule,
     GithubModule,
+    ApiKeysModule,
+    WebhooksModule,
+    NotificationsModule,
+    UsageModule,
+    AlertsModule,
+    MetricsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

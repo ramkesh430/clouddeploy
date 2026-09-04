@@ -21,6 +21,9 @@ export interface Deployment {
   durationMs: number | null;
   errorMessage: string | null;
   createdAt: string;
+  isAutoDeploy?: boolean;
+  triggeredBy?: { id: string; fullName: string; email: string; avatarUrl: string | null } | null;
+  build?: { dockerImageTag: string | null; status: string } | null;
 }
 
 export function useDeployments(projectId: string | null) {

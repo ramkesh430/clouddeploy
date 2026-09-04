@@ -102,7 +102,9 @@ export class GithubController {
       signature?.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
     if (!validSignature) throw new BadRequestException("Invalid webhook signature");
 
-    if (event !== "push") return { handled: false, reason: `ignored event type "${event}"` };
-    return this.githubService.handlePushEvent(JSON.parse(rawBody.toString("utf8")));
+    const payload = JSON.parse(rawBody.toString("utf8"));
+    if (event === "push") return this.githubService.handlePushEvent(payload);
+    if (event === "pull_request") return this.githubService.handlePullRequestEvent(payload);
+    return { handled: false, reason: `ignored event type "${event}"` };
   }
 }

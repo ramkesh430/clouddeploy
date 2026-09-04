@@ -1,5 +1,7 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
 import crypto from "node:crypto";
 import { encryptSecret, decryptSecret } from "@clouddeploy/security";
 import { RESOURCE_PRESETS } from "@clouddeploy/types";
@@ -7,9 +9,21 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateDatabaseDto } from "./dto/create-database.dto";
 import { PostgresAdminService } from "./postgres-admin.service";
 import { PostgresBackupService } from "./postgres-backup.service";
+import { WebhooksService } from "../webhooks/webhooks.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { UsageService } from "../usage/usage.service";
+import { ActivityLogService } from "../activity-log/activity-log.service";
 
 const DEFAULT_PORTS: Record<string, number> = { POSTGRESQL: 5432, MYSQL: 3306, MARIADB: 3306 };
 const DEFAULT_VERSIONS: Record<string, string> = { POSTGRESQL: "16", MYSQL: "8.4", MARIADB: "11" };
+
+export const DATABASE_BACKUPS_QUEUE = "database-backups";
+
+/** daily -> every day at 3am; weekly -> every Sunday at 3am. */
+const BACKUP_CRON_PATTERNS: Record<string, string> = {
+  daily: "0 3 * * *",
+  weekly: "0 3 * * 0",
+};
 
 @Injectable()
 export class DatabasesService {
@@ -20,7 +34,47 @@ export class DatabasesService {
     private readonly config: ConfigService,
     private readonly postgresAdmin: PostgresAdminService,
     private readonly postgresBackup: PostgresBackupService,
+    private readonly webhooks: WebhooksService,
+    private readonly notifications: NotificationsService,
+    private readonly usage: UsageService,
+    private readonly activityLog: ActivityLogService,
+    @InjectQueue(DATABASE_BACKUPS_QUEUE) private readonly backupQueue: Queue,
   ) {}
+
+  async scheduleAutomaticBackups(databaseId: string, frequency: string) {
+    const pattern = BACKUP_CRON_PATTERNS[frequency];
+    if (!pattern) return; // "manual" or unrecognized — no schedule
+    await this.backupQueue.upsertJobScheduler(
+      databaseId,
+      { pattern, tz: "UTC" },
+      { name: "run-automatic-backup", data: { databaseId }, opts: { removeOnComplete: 50, removeOnFail: 50 } },
+    );
+  }
+
+  async unscheduleAutomaticBackups(databaseId: string) {
+    await this.backupQueue.removeJobScheduler(databaseId).catch(() => undefined);
+  }
+
+  /** Deletes completed backups older than the database's retention window
+   * (both the DB row and, best-effort, the underlying S3 object). */
+  async pruneExpiredBackups(databaseId: string) {
+    const database = await this.prisma.database.findUnique({ where: { id: databaseId } });
+    if (!database) return;
+
+    const cutoff = new Date(Date.now() - database.backupRetentionDays * 24 * 60 * 60 * 1000);
+    const expired = await this.prisma.databaseBackup.findMany({
+      where: { databaseId, status: "COMPLETED", createdAt: { lt: cutoff } },
+    });
+    if (expired.length === 0) return;
+
+    for (const backup of expired) {
+      if (backup.s3Key) {
+        await this.postgresBackup.deleteBackupObject(backup.s3Key).catch(() => undefined);
+      }
+    }
+    await this.prisma.databaseBackup.deleteMany({ where: { id: { in: expired.map((b) => b.id) } } });
+    this.logger.log(`Pruned ${expired.length} expired backup(s) for database ${databaseId}`);
+  }
 
   async list(organizationId: string) {
     const rows = await this.prisma.database.findMany({
@@ -32,6 +86,13 @@ export class DatabasesService {
   }
 
   async create(dto: CreateDatabaseDto) {
+    const dbLimit = await this.usage.checkLimit(dto.organizationId, "databases");
+    if (!dbLimit.allowed) {
+      throw new BadRequestException(
+        `Your plan is limited to ${dbLimit.limit} database${dbLimit.limit === 1 ? "" : "s"}. Upgrade to create more.`,
+      );
+    }
+
     const preset = RESOURCE_PRESETS.find((p) => p.id === (dto.resourcePreset ?? "starter"))!;
     const username = `${dto.name.replace(/-/g, "_")}_user`;
     const databaseName = dto.name.replace(/-/g, "_");
@@ -66,9 +127,10 @@ export class DatabasesService {
       // the right MVP fidelity level).
       this.postgresAdmin
         .createTenantDatabase(databaseName, username, password)
-        .then(() =>
-          this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } }),
-        )
+        .then(async () => {
+          await this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } });
+          await this.scheduleAutomaticBackups(database.id, database.backupFrequency);
+        })
         .catch(async (err) => {
           this.logger.error(`Failed to provision Postgres database "${databaseName}": ${err.message}`);
           await this.prisma.database.update({ where: { id: database.id }, data: { status: "FAILED" } });
@@ -76,10 +138,13 @@ export class DatabasesService {
     } else {
       // MySQL/MariaDB provisioning requires a MySQL server in the local
       // infra stack, which isn't wired up yet — simulated until then.
-      setTimeout(() => {
-        this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } }).catch(() => undefined);
+      setTimeout(async () => {
+        await this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } }).catch(() => undefined);
+        await this.scheduleAutomaticBackups(database.id, database.backupFrequency);
       }, 3000);
     }
+
+    await this.usage.record(dto.organizationId, "database_created", 1, "count");
 
     return { ...this.withoutSecrets(database), initialPassword: password };
   }
@@ -143,22 +208,24 @@ export class DatabasesService {
     if (database.engine === "POSTGRESQL") {
       this.postgresBackup
         .createBackup(database.databaseName, s3Key)
-        .then(({ sizeBytes }) =>
-          this.prisma.databaseBackup.update({
+        .then(async ({ sizeBytes }) => {
+          await this.prisma.databaseBackup.update({
             where: { id: backup.id },
             data: { status: "COMPLETED", finishedAt: new Date(), sizeBytes: BigInt(sizeBytes), s3Key },
-          }),
-        )
+          });
+          await this.onBackupCompleted(database, backup.id);
+        })
         .catch(async (err) => {
           this.logger.error(`Backup failed for database ${databaseId}: ${err.message}`);
           await this.prisma.databaseBackup.update({
             where: { id: backup.id },
             data: { status: "FAILED", finishedAt: new Date() },
           });
+          await this.onBackupFailed(database, backup.id, err.message);
         });
     } else {
-      setTimeout(() => {
-        this.prisma.databaseBackup
+      setTimeout(async () => {
+        await this.prisma.databaseBackup
           .update({
             where: { id: backup.id },
             data: {
@@ -169,23 +236,52 @@ export class DatabasesService {
             },
           })
           .catch(() => undefined);
+        await this.onBackupCompleted(database, backup.id);
       }, 2500);
     }
 
     return backup;
   }
 
+  private async onBackupCompleted(database: { id: string; organizationId: string; name: string }, backupId: string) {
+    await this.webhooks.dispatch(database.organizationId, "database.backup.completed", { databaseId: database.id, backupId, databaseName: database.name });
+    await this.notifications.notifyOrganization(
+      database.organizationId,
+      "DATABASE_BACKUP_COMPLETED",
+      `Backup completed for ${database.name}`,
+      `A backup of ${database.name} finished successfully.`,
+    );
+  }
+
+  private async onBackupFailed(database: { id: string; organizationId: string; name: string }, backupId: string, error: string) {
+    await this.webhooks.dispatch(database.organizationId, "database.backup.failed", { databaseId: database.id, backupId, databaseName: database.name, error });
+    await this.notifications.notifyOrganization(
+      database.organizationId,
+      "DATABASE_BACKUP_FAILED",
+      `Backup failed for ${database.name}`,
+      `A backup of ${database.name} failed: ${error}`,
+    );
+  }
+
   async listBackups(databaseId: string) {
     return this.prisma.databaseBackup.findMany({ where: { databaseId }, orderBy: { createdAt: "desc" } });
   }
 
-  async restoreBackup(databaseId: string, backupId: string) {
+  async restoreBackup(databaseId: string, backupId: string, userId?: string) {
     const database = await this.assertExists(databaseId);
     const backup = await this.prisma.databaseBackup.findFirst({ where: { id: backupId, databaseId } });
     if (!backup || backup.status !== "COMPLETED" || !backup.s3Key) {
       throw new NotFoundException("Backup not found or not yet completed");
     }
     await this.prisma.database.update({ where: { id: databaseId }, data: { status: "RESTARTING" } });
+
+    await this.activityLog.log({
+      organizationId: database.organizationId,
+      userId,
+      action: "database.backup_restored",
+      resourceType: "Database",
+      resourceId: databaseId,
+    });
 
     if (database.engine === "POSTGRESQL") {
       this.postgresBackup
@@ -213,6 +309,7 @@ export class DatabasesService {
         this.logger.error(`Failed to drop Postgres database "${database.databaseName}": ${err.message}`);
       });
     }
+    await this.unscheduleAutomaticBackups(databaseId);
     await this.prisma.database.update({ where: { id: databaseId }, data: { deletedAt: new Date() } });
     return { removed: true };
   }

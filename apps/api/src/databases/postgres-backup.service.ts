@@ -84,4 +84,9 @@ export class PostgresBackupService {
     }
     this.logger.log(`Restored database "${databaseName}" from s3://${bucket}/${s3Key}`);
   }
+
+  async deleteBackupObject(s3Key: string): Promise<void> {
+    const bucket = this.config.get<string>("S3_BACKUPS_BUCKET") ?? "clouddeploy-backups";
+    await this.getS3().deleteObject(bucket, s3Key);
+  }
 }

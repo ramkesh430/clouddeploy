@@ -34,6 +34,19 @@ export class RedisDbController {
     return this.redisDbService.getConnectionInfo(redisInstanceId);
   }
 
+  @Post(":redisInstanceId/attach")
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
+  @ApiOperation({ summary: "Inject REDIS_URL into a service's environment variables" })
+  attach(@Param("redisInstanceId") redisInstanceId: string, @Body("serviceId") serviceId: string) {
+    return this.redisDbService.attachToService(redisInstanceId, serviceId);
+  }
+
+  @Get(":redisInstanceId/metrics")
+  @ApiOperation({ summary: "Real live metrics: key count under this tenant's prefix + server memory usage" })
+  metrics(@Param("redisInstanceId") redisInstanceId: string) {
+    return this.redisDbService.getMetrics(redisInstanceId);
+  }
+
   @Post(":redisInstanceId/restart")
   @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
   @ApiOperation({ summary: "Restart a Redis instance" })

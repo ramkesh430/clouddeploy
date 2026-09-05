@@ -15,4 +15,9 @@ export class CreateBucketDto {
   @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
+
+  @ApiPropertyOptional({ example: "us-east" })
+  @IsOptional()
+  @IsString()
+  region?: string;
 }

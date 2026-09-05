@@ -1,0 +1,12 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Activity, AlertTriangle, BarChart3, Boxes, Building2, CircleDollarSign, CloudCog, Container, Database, FileClock, FolderKanban, Globe, HardDrive, Headphones, KeyRound, LayoutDashboard, MapPin, Server, Users, Wrench } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const links = [
+  ["/admin", "Dashboard", LayoutDashboard], ["/admin/users", "Users", Users], ["/admin/organizations", "Organizations", Building2], ["/admin/projects", "Projects", FolderKanban], ["/admin/deployments", "Deployments", CloudCog], ["/admin/containers", "Containers", Container], ["/admin/databases", "Databases", Database], ["/admin/domains", "Domains", Globe], ["/admin/regions", "Regions", MapPin], ["/admin/servers", "Servers", Server], ["/admin/build-workers", "Build workers", Wrench], ["/admin/runtime-nodes", "Runtime nodes", Activity], ["/admin/database-nodes", "Database nodes", Database], ["/admin/storage-nodes", "Storage nodes", HardDrive], ["/admin/infrastructure", "Capacity", Boxes], ["/admin/plans", "Plans", CircleDollarSign], ["/admin/subscriptions", "Subscriptions", KeyRound], ["/admin/transactions", "Transactions", CircleDollarSign], ["/admin/usage", "Usage", BarChart3], ["/admin/support", "Support", Headphones], ["/admin/abuse", "Abuse", AlertTriangle], ["/admin/status", "Status", Activity], ["/admin/analytics", "Analytics", BarChart3], ["/admin/system-logs", "System logs", FileClock], ["/admin/security", "Security", KeyRound],
+] as const;
+
+export function AdminSidebar() { const pathname = usePathname(); return <aside className="hidden w-64 shrink-0 flex-col bg-slate-950 text-slate-100 md:flex"><Link href="/admin" className="flex h-16 items-center gap-2 border-b border-white/10 px-5 font-semibold"><Boxes className="h-5 w-5 text-blue-400" /> CloudDeploy Admin</Link><nav className="flex-1 space-y-1 overflow-y-auto p-3">{links.map(([href, label, Icon]) => { const active = href === "/admin" ? pathname === href : pathname.startsWith(href); return <Link href={href} key={href} className={cn("flex items-center gap-2.5 rounded-md px-3 py-2 text-sm", active ? "bg-blue-500/20 text-blue-200" : "text-slate-400 hover:bg-white/5 hover:text-white")}><Icon className="h-4 w-4" />{label}</Link>; })}</nav><Link href="/dashboard" className="border-t border-white/10 p-4 text-sm text-slate-400 hover:text-white">← Customer dashboard</Link></aside>; }

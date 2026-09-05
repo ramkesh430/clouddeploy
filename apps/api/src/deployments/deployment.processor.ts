@@ -7,6 +7,7 @@ import { DeploymentsGateway } from "./deployments.gateway";
 import { DEPLOYMENTS_QUEUE } from "./deployments.service";
 import { WebhooksService } from "../webhooks/webhooks.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { SchedulerService } from "../infrastructure/scheduler.service";
 
 const STEP_DELAY_MS = 900;
 
@@ -26,6 +27,7 @@ export class DeploymentProcessor extends WorkerHost {
     private readonly gateway: DeploymentsGateway,
     private readonly webhooks: WebhooksService,
     private readonly notifications: NotificationsService,
+    private readonly scheduler: SchedulerService,
   ) {
     super();
   }
@@ -60,7 +62,8 @@ export class DeploymentProcessor extends WorkerHost {
     const pipeline = reusesImage ? DEPLOYMENT_PIPELINE.filter((s) => !BUILD_STEP_KEYS.has(s.key)) : DEPLOYMENT_PIPELINE;
 
     if (!reusesImage) {
-      await this.prisma.build.create({ data: { deploymentId, status: "RUNNING", startedAt: new Date() } });
+      const buildWorker = await this.scheduler.chooseBuildWorker(deployment.project.region);
+      await this.prisma.build.create({ data: { deploymentId, buildWorkerId: buildWorker?.id, status: "RUNNING", startedAt: new Date() } });
     }
     await this.updateStatus(deploymentId, reusesImage ? "DEPLOYING" : "CLONING", 0, reusesImage ? "Start Containers" : "Clone Repository");
 
@@ -135,6 +138,20 @@ export class DeploymentProcessor extends WorkerHost {
           where: { id: deployment.projectId },
           data: { productionUrl: deployment.project.productionUrl ?? `https://${deployment.project.slug}.clouddeploy.app` },
         });
+      }
+
+      const deployableServices = services.filter((service) =>
+        !["POSTGRES", "MYSQL", "MARIADB", "REDIS", "OBJECT_STORAGE"].includes(service.type) &&
+        (!deployment.serviceId || service.id === deployment.serviceId),
+      );
+      for (const service of deployableServices) {
+        if (service.port && !service.isPrivate && !service.publicUrl) {
+          await this.prisma.service.update({
+            where: { id: service.id },
+            data: { publicUrl: `https://${service.name}-${deployment.project.slug}.${platformDomain}` },
+          });
+        }
+        await this.scheduler.reconcileServiceReplicas(service.id, service.instances, deploymentId);
       }
 
       this.gateway.emitStatus(deploymentId, { status: "LIVE", progressPct: 100, currentStep: "Deploy Live" });

@@ -6,9 +6,16 @@
  * deploy() to loop and pick one service to carry the Build's image tag. */
 export interface TemplateServiceDefinition {
   name: string;
-  dockerImage: string;
+  dockerImage?: string;
   port: number;
   healthCheckPath?: string;
+  type?: "STATIC_SITE" | "WEB_SERVICE" | "API_SERVICE" | "PRIVATE_SERVICE" | "WORKER" | "DOCKER_SERVICE";
+  runtime?: "NODE" | "PYTHON" | "PHP" | "DOCKER";
+  framework?: "NEXTJS" | "REACT" | "EXPRESS" | "DJANGO" | "LARAVEL" | "DOCKERFILE" | "UNKNOWN";
+  rootDirectory?: string;
+  buildCommand?: string;
+  startCommand?: string;
+  volumes?: Array<{ mountPath: string; sizeMb: number }>;
 }
 
 /** Maps the real provisioned database's connection info onto the specific
@@ -26,12 +33,19 @@ export interface DatabaseEnvVarMapping {
 }
 
 export interface TemplateDefinition {
-  service: TemplateServiceDefinition;
+  /** Legacy single-service shape remains supported for existing marketplace entries. */
+  service?: TemplateServiceDefinition;
+  services?: TemplateServiceDefinition[];
   needsDatabase?: boolean;
+  databaseEngine?: "POSTGRESQL" | "MYSQL" | "MARIADB";
   databaseEnvVars?: DatabaseEnvVarMapping;
   needsRedis?: boolean;
   resourcePreset?: "nano" | "starter" | "developer" | "pro";
   /** Fixed, non-secret config values the image needs to boot correctly
    * (e.g. Ghost's sqlite client selection) — written as plain env vars. */
   staticEnvVars?: Record<string, string>;
+  databaseTargetService?: string;
+  redisTargetService?: string;
+  storage?: Array<{ name: string; isPublic?: boolean }>;
+  domains?: Array<{ serviceName: string; environment: "PRODUCTION" | "PREVIEW" }>;
 }

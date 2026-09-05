@@ -25,4 +25,9 @@ export class CreateRedisDto {
   @IsOptional()
   @IsString()
   attachToServiceId?: string;
+
+  @ApiPropertyOptional({ example: "us-east" })
+  @IsOptional()
+  @IsString()
+  region?: string;
 }

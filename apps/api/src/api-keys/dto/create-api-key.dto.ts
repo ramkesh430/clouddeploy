@@ -1,5 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { ArrayNotEmpty, IsArray, IsIn, IsString } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 export const API_KEY_PERMISSIONS = [
   "projects:read",
@@ -11,6 +11,11 @@ export const API_KEY_PERMISSIONS = [
   "databases:write",
   "domains:read",
   "domains:write",
+  "environment:read",
+  "environment:write",
+  "services:read",
+  "services:write",
+  "ai:write",
   "billing:read",
 ] as const;
 
@@ -28,4 +33,17 @@ export class CreateApiKeyDto {
   @ArrayNotEmpty()
   @IsIn(API_KEY_PERMISSIONS, { each: true })
   permissions!: string[];
+
+  @ApiProperty({ required: false, type: [String], description: "Optional exact IPs or IPv4 CIDR ranges" })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedIpRanges?: string[];
+
+  @ApiProperty({ required: false, minimum: 1, maximum: 10_000 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10_000)
+  rateLimitPerMinute?: number;
 }

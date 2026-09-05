@@ -1,0 +1,15 @@
+{
+  "name": "@clouddeploy/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for the CloudDeploy public API",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}

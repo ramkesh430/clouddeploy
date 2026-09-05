@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser, RequestUser } from "../common/decorators/current-user.decorator";
@@ -12,7 +12,7 @@ import { OrgRole } from "@clouddeploy/database";
 
 @ApiTags("databases")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(AnyAuthGuard, RolesGuard)
 @Controller({ path: "databases", version: "1" })
 export class DatabasesController {
   constructor(

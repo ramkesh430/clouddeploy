@@ -2,7 +2,7 @@
 
 **Deploy Your Entire Application.** Frontend, backend, database, storage, domains and SSL — all from one cloud platform.
 
-This repository is being built incrementally, feature-by-feature, per the build order in section 149 of the product spec. It is **not** a finished commercial product yet — treat this file as the current state of truth, not the full 150-section spec.
+This repository is built incrementally. Phase 1, Phase 2, and the Phase 3 control-plane/product surfaces are implemented; the hardened arbitrary-code data plane remains a launch gate. Treat this file and the [Phase 3 readiness checklist](docs/phase-3/LAUNCH_READINESS.md) as the current state of truth.
 
 ## What's implemented
 
@@ -45,11 +45,24 @@ This repository is being built incrementally, feature-by-feature, per the build 
 - **Auto-deploy on push**: a real webhook receiver with HMAC-SHA256 signature verification (`X-Hub-Signature-256`), wired to install itself on import when `GITHUB_WEBHOOK_SECRET` is set.
 - The deploy wizard (`/projects/new/empty`) now accepts a detected repository and pre-fills project name, services (with real build/start commands and root directories), and offers to provision the *actually recommended* database/Redis via the real Phase 2 provisioning — "Deploy Full Stack" from a real repo now really does deploy the full stack it detected.
 
-Everything above is real, working, and connected to its actual backing service — no mocked API calls, no fake success responses. What's still simulated: actual Docker application builds and Traefik routing (the deployment pipeline runs through the same named steps and writes real logs/state, via an adapter interface designed to be swapped for a real build-worker/runtime-agent later), and MySQL/MariaDB provisioning (no MySQL server in the local infra stack yet — Postgres is fully real). One consequence of application containers not being real yet: there's no per-service CPU/RAM metrics *collector* (the `Metric` table and its alert rules/retention are all real and correct, but nothing writes to it yet — `docker stats` has nothing real to sample per deployed service in this MVP) — database and Redis metrics/alerts are unaffected since those processes are genuinely real.
+### Phase 3 — AI assistance, commercial operations, regions, scaling, admin, API, SDK, and CLI
+
+- **Safe AI deployment assistance**: structured repository analysis, environment/dependency/resource recommendations, deployment architecture explanations, log root-cause analysis, review-required typed fixes, and Dockerfile generation. Secret-bearing files are discarded, remaining text is redacted, and raw input is not persisted.
+- **Templates marketplace**: categorized definitions for Next.js, React + Node, MERN, Laravel, Django, WordPress, n8n, Strapi, Ghost, Directus, Metabase, Grafana, and Uptime Kuma. Definitions support multiple services, managed data/cache/storage, ports, variables, volumes, health checks, domains, and resource estimates.
+- **Agency and white label**: client/project economics, health dashboard, portal grants, branding, accent/logo/domain/support/login settings, and strict tenant-safe client projections.
+- **Regional infrastructure**: Singapore, Mumbai, Dubai, Frankfurt, Virginia and extensible regions; typed build/runtime/database/storage nodes; authenticated agent heartbeats/commands; same-region placement and cross-region warnings.
+- **Autoscaling and routing**: CPU/RAM/request rules with min/max and cooldowns, replica reconciliation and history, plus Traefik output containing only healthy running replicas.
+- **Operations**: separate `/admin` console for commercial, tenant, workload, capacity, server, support, abuse, status, analytics, logs, and security workflows. Server actions include drain, maintenance, restart-agent, disable, and reviewed removal.
+- **Support, trust, and status**: customer/admin ticket conversations, abuse reports and risk events, container/project/user suspension workflows, and a live public `/status` page with published incident updates.
+- **Security**: TOTP 2FA, one-time recovery codes, suspicious-login events, session revocation, API-key IP restrictions, secret-access audit schema, and SSO/enterprise-ready data models.
+- **Developer platform**: versioned `/api/v1`, plan-aware scoped API keys, `@clouddeploy/sdk`, and a `clouddeploy` CLI supporting auth, projects, deploy, logs, env, domains, databases, and rollback.
+- **Operating documentation**: [architecture](docs/phase-3/ARCHITECTURE.md), [schema](docs/phase-3/DATABASE_SCHEMA.md), [API](docs/phase-3/API.md), [infrastructure](docs/phase-3/INFRASTRUCTURE.md), [security](docs/phase-3/SECURITY_REVIEW.md), [scaling](docs/phase-3/SCALING.md), [production](docs/phase-3/PRODUCTION_DEPLOYMENT.md), [disaster recovery](docs/phase-3/DISASTER_RECOVERY.md), and [known limitations](docs/phase-3/KNOWN_LIMITATIONS.md).
+
+The Phase 1/2 backing services described above are real. Phase 3's control-plane state machines and product/API surfaces are working, while local arbitrary application builds and runtime containers still use the simulation adapter; the production worker/agent sandbox, telemetry collector, and edge deployment are explicit launch gates. MySQL/MariaDB and MongoDB provider provisioning also require production providers; PostgreSQL is fully implemented locally. See [known limitations](docs/phase-3/KNOWN_LIMITATIONS.md).
 
 ## What's next
 
-See section 149 of the product spec. Immediate next slice: real Docker BuildKit builds in a dedicated `build-worker` process, then Traefik-driven zero-downtime deploys in a `runtime-agent` process (which would also be what makes a real per-service metrics collector possible). Also pending from Phase 2: frontend pages for API keys, webhooks, notifications, usage, project/team member management, and alert rules — all built and live-verified on the backend, none yet have a UI.
+The immediate launch slice is the hardened BuildKit worker/runtime agent, production telemetry/abuse collectors, Redis-backed distributed rate limiting, and production-equivalent acceptance/load/security testing. The readiness checklist tracks the exact gates.
 
 ## Getting started
 
@@ -74,7 +87,7 @@ npm run dev                     # runs apps/api and apps/web in parallel via Tur
 apps/
   web/            Next.js frontend
   api/             NestJS control-plane API
-  admin/           Super admin panel (not yet built)
+                   (the separate super-admin route tree lives in apps/web/src/app/admin)
   build-worker/    Dedicated build process (not yet built — simulated inside apps/api for now)
   runtime-agent/   Container/Traefik orchestration agent (not yet built)
 
@@ -87,7 +100,8 @@ packages/
   deployment-core/ Deployment pipeline steps + the pure repository-stack detector (detection.ts), shared by API + web
   docker/          Local docker-exec adapter (used for pg_dump/psql — see PostgresBackupService)
   storage/         S3-compatible storage adapter (MinIO locally, swappable to R2/S3)
-  ui/ auth/ sdk/ git/ monitoring/ billing/  (reserved for later phases)
+  sdk/             Official TypeScript public API client
+  cli/             clouddeploy command-line client
 
 infra/
   docker/          docker-compose.yml for local dev infrastructure (Postgres, Redis, MinIO, Mailpit, Traefik, registry, Prometheus, Grafana, Loki)

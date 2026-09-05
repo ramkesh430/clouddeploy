@@ -39,6 +39,16 @@ export class DeploymentsService {
     return deployment;
   }
 
+  async logs(deploymentId: string, after?: string, limit = 500) {
+    const deployment = await this.prisma.deployment.findUnique({ where: { id: deploymentId }, select: { id: true } });
+    if (!deployment) throw new NotFoundException("Deployment not found");
+    return this.prisma.deploymentLog.findMany({
+      where: { deploymentId, ...(after ? { timestamp: { gt: new Date(after) } } : {}) },
+      orderBy: { timestamp: "asc" },
+      take: Math.min(Math.max(limit, 1), 2_000),
+    });
+  }
+
   async create(
     dto: CreateDeploymentDto,
     triggeredById: string | undefined,

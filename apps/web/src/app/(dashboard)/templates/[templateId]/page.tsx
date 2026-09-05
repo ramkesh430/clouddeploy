@@ -34,6 +34,8 @@ export default function TemplateDetailPage() {
   }
 
   const def = template.servicesJson;
+  const services = def.services ?? (def.service ? [def.service] : []);
+  const primaryService = services[0];
 
   return (
     <div className="flex flex-col gap-6">
@@ -80,21 +82,21 @@ export default function TemplateDetailPage() {
             <Server className="h-4 w-4 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">Service</p>
-              <p className="font-mono">{def.service.name}</p>
+              <p className="font-mono">{services.map((service) => service.name).join(", ")}</p>
             </div>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Docker Image</p>
-            <p className="font-mono">{def.service.dockerImage}</p>
+            <p className="font-mono">{primaryService?.dockerImage ?? "Built from source"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Port</p>
-            <p className="font-mono">{def.service.port}</p>
+            <p className="font-mono">{services.map((service) => service.port).join(", ")}</p>
           </div>
-          {def.service.healthCheckPath && (
+          {primaryService?.healthCheckPath && (
             <div>
               <p className="text-xs text-muted-foreground">Health Check</p>
-              <p className="font-mono">{def.service.healthCheckPath}</p>
+              <p className="font-mono">{primaryService.healthCheckPath}</p>
             </div>
           )}
         </CardContent>

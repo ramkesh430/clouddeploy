@@ -20,7 +20,8 @@ export interface Template {
   logoUrl: string | null;
   repositoryUrl: string | null;
   servicesJson: {
-    service: { name: string; dockerImage: string; port: number; healthCheckPath?: string };
+    service?: { name: string; dockerImage?: string; port: number; healthCheckPath?: string };
+    services?: Array<{ name: string; dockerImage?: string; port: number; healthCheckPath?: string }>;
     needsDatabase?: boolean;
     needsRedis?: boolean;
     resourcePreset?: string;
@@ -62,7 +63,7 @@ export interface DeployTemplateResult {
 export function useDeployTemplate(templateId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { organizationId: string; projectName: string; projectSlug?: string }) =>
+    mutationFn: (input: { organizationId: string; projectName: string; projectSlug?: string; region?: string }) =>
       api.post<DeployTemplateResult>(`/templates/${templateId}/deploy`, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });

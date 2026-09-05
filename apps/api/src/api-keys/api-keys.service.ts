@@ -19,6 +19,8 @@ export class ApiKeysService {
         name: true,
         prefix: true,
         permissions: true,
+        allowedIpRanges: true,
+        rateLimitPerMinute: true,
         lastUsedAt: true,
         createdAt: true,
         user: { select: { fullName: true, email: true } },
@@ -39,6 +41,8 @@ export class ApiKeysService {
         prefix,
         keyHash,
         permissions: dto.permissions,
+        allowedIpRanges: dto.allowedIpRanges ?? [],
+        rateLimitPerMinute: dto.rateLimitPerMinute,
       },
     });
 
@@ -52,7 +56,7 @@ export class ApiKeysService {
 
     // The full key is only ever returned here, at creation time — only the
     // hash is stored, so it can never be displayed again after this.
-    return { id: row.id, name: row.name, prefix: row.prefix, permissions: row.permissions, key: full };
+    return { id: row.id, name: row.name, prefix: row.prefix, permissions: row.permissions, allowedIpRanges: row.allowedIpRanges, rateLimitPerMinute: row.rateLimitPerMinute, key: full };
   }
 
   async revoke(apiKeyId: string) {

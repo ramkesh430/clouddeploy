@@ -6,7 +6,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import crypto from "node:crypto";
-import { hashPassword, verifyPassword } from "@clouddeploy/security";
+import { decryptSecret, hashPassword, verifyPassword, verifyTotp } from "@clouddeploy/security";
 import { JwtPayload, AuthTokens } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RegisterDto } from "./dto/register.dto";
@@ -72,12 +72,23 @@ export class AuthService {
     const valid = await verifyPassword(dto.password, user.passwordHash);
     if (!valid) {
       await this.registerFailedLogin(user.id);
+      await this.recordLogin(user.id, meta, false, false, "INVALID_PASSWORD");
       throw new UnauthorizedException("Invalid email or password");
     }
 
     if (user.isSuspended) {
+      await this.recordLogin(user.id, meta, false, false, "ACCOUNT_SUSPENDED");
       throw new UnauthorizedException("This account has been suspended");
     }
+
+    if (user.twoFactorEnabled) {
+      if (!dto.otpCode || !(await this.verifySecondFactor(user.id, user.twoFactorSecret, dto.otpCode))) {
+        await this.recordLogin(user.id, meta, false, false, dto.otpCode ? "INVALID_SECOND_FACTOR" : "SECOND_FACTOR_REQUIRED");
+        throw new UnauthorizedException(dto.otpCode ? "Invalid two-factor code" : "Two-factor code required");
+      }
+    }
+
+    const suspicious = !!user.lastLoginIp && !!meta.ipAddress && user.lastLoginIp !== meta.ipAddress;
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -88,6 +99,9 @@ export class AuthService {
         lastLoginIp: meta.ipAddress,
       },
     });
+
+    await this.recordLogin(user.id, meta, true, suspicious, suspicious ? "NEW_IP_ADDRESS" : undefined);
+    if (suspicious) await this.notifySuspiciousLogin(user.id, meta.ipAddress);
 
     const tokens = await this.issueTokens(user.id, user.email, meta);
     return { user: this.toPublicUser(user), tokens };
@@ -130,6 +144,19 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     return { loggedOut: true };
+  }
+
+  async me(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, email: true, fullName: true, avatarUrl: true, emailVerifiedAt: true,
+        isPlatformAdmin: true, twoFactorEnabled: true, createdAt: true,
+        organizationMembers: { where: { status: "ACTIVE" }, include: { organization: { select: { id: true, name: true, slug: true, isAgency: true } } } },
+      },
+    });
+    if (!user) throw new UnauthorizedException("Account is not active");
+    return { ...this.toPublicUser(user), isPlatformAdmin: user.isPlatformAdmin, organizations: user.organizationMembers.map((membership) => ({ ...membership.organization, role: membership.role })) };
   }
 
   async verifyEmail(token: string) {
@@ -220,13 +247,40 @@ export class AuthService {
     return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }
 
-  private toPublicUser(user: { id: string; email: string; fullName: string; avatarUrl: string | null; emailVerifiedAt: Date | null }) {
+  private async verifySecondFactor(userId: string, secretCipher: string | null, code: string) {
+    if (secretCipher && /^\d{6}$/.test(code)) {
+      try {
+        if (verifyTotp(decryptSecret(secretCipher, this.config.getOrThrow<string>("ENCRYPTION_KEY")), code)) return true;
+      } catch { /* fall through to recovery codes */ }
+    }
+    const recoveryCodes = await this.prisma.recoveryCode.findMany({ where: { userId, usedAt: null } });
+    for (const recovery of recoveryCodes) {
+      if (await verifyPassword(code.toUpperCase(), recovery.codeHash)) {
+        await this.prisma.recoveryCode.update({ where: { id: recovery.id }, data: { usedAt: new Date() } });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private recordLogin(userId: string, meta: { ipAddress?: string; userAgent?: string }, successful: boolean, suspicious: boolean, reason?: string) {
+    return this.prisma.loginEvent.create({ data: { userId, ipAddress: meta.ipAddress, userAgent: meta.userAgent, successful, suspicious, reason } });
+  }
+
+  private async notifySuspiciousLogin(userId: string, ipAddress?: string) {
+    const memberships = await this.prisma.organizationMember.findMany({ where: { userId, status: "ACTIVE" }, select: { organizationId: true } });
+    if (!memberships.length) return;
+    await this.prisma.notification.createMany({ data: memberships.map((membership) => ({ organizationId: membership.organizationId, userId, type: "SUSPICIOUS_LOGIN" as const, title: "New sign-in location", message: `A sign-in from ${ipAddress ?? "an unknown IP address"} was detected. Review active sessions if this was not you.` })) });
+  }
+
+  private toPublicUser(user: { id: string; email: string; fullName: string; avatarUrl: string | null; emailVerifiedAt: Date | null; twoFactorEnabled?: boolean }) {
     return {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       avatarUrl: user.avatarUrl,
       emailVerified: !!user.emailVerifiedAt,
+      twoFactorEnabled: !!user.twoFactorEnabled,
     };
   }
 }

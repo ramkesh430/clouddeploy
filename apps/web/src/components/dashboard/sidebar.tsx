@@ -19,6 +19,12 @@ import {
   KeyRound,
   Settings,
   LogOut,
+  Sparkles,
+  Building2,
+  MapPinned,
+  Scale,
+  LifeBuoy,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store/auth-store";
@@ -34,6 +40,10 @@ const platformLinks = [
   { href: "/domains", label: "Domains", icon: Globe },
   { href: "/monitoring", label: "Monitoring", icon: Activity },
   { href: "/templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/ai", label: "AI Assistant", icon: Sparkles },
+  { href: "/agency", label: "Agency", icon: Building2 },
+  { href: "/regions", label: "Regions", icon: MapPinned },
+  { href: "/autoscaling", label: "Autoscaling", icon: Scale },
 ];
 
 const accountLinks = [
@@ -42,6 +52,8 @@ const accountLinks = [
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/support", label: "Support", icon: LifeBuoy },
+  { href: "/security", label: "Security", icon: ShieldCheck },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

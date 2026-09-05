@@ -53,13 +53,16 @@ export class ProjectsService {
       );
     }
 
+    const region = dto.region ?? "us-east";
+    await this.assertActiveRegion(region);
+
     return this.prisma.project.create({
       data: {
         organizationId,
         name: dto.name,
         slug: dto.slug,
         description: dto.description,
-        region: dto.region ?? "us-east",
+        region,
         createdBy,
       },
     });
@@ -93,6 +96,7 @@ export class ProjectsService {
 
   async update(projectId: string, dto: UpdateProjectDto) {
     await this.assertExists(projectId);
+    if (dto.region) await this.assertActiveRegion(dto.region);
     return this.prisma.project.update({ where: { id: projectId }, data: dto });
   }
 
@@ -148,5 +152,11 @@ export class ProjectsService {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, deletedAt: null } });
     if (!project) throw new NotFoundException("Project not found");
     return project;
+  }
+
+  private async assertActiveRegion(code: string) {
+    const region = await this.prisma.region.findUnique({ where: { code } });
+    if (!region?.active) throw new BadRequestException("Selected region is not active");
+    return region;
   }
 }

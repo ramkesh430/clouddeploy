@@ -8,6 +8,7 @@ import { RedisDbService } from "../redis-db/redis-db.service";
 import { EnvironmentVariablesService } from "../environment-variables/environment-variables.service";
 import { DeploymentsService } from "../deployments/deployments.service";
 import { ActivityLogService } from "../activity-log/activity-log.service";
+import { StorageService } from "../storage/storage.service";
 import { DeployTemplateDto } from "./dto/deploy-template.dto";
 import { TemplateDefinition } from "./template-definition";
 
@@ -22,6 +23,7 @@ export class TemplatesService {
     private readonly envVars: EnvironmentVariablesService,
     private readonly deployments: DeploymentsService,
     private readonly activityLog: ActivityLogService,
+    private readonly storage: StorageService,
   ) {}
 
   async listCategories() {
@@ -62,24 +64,35 @@ export class TemplatesService {
       name: dto.projectName,
       slug,
       description: `Deployed from the ${template.name} template`,
+      region: dto.region,
     });
 
-    const service = await this.services.create({
-      projectId: project.id,
-      name: def.service.name,
-      type: "DOCKER_SERVICE",
-      runtime: "DOCKER",
-      framework: "UNKNOWN",
-      port: def.service.port,
-      healthCheckPath: def.service.healthCheckPath,
-      resourcePreset: def.resourcePreset ?? "starter",
-    });
+    const definitions = def.services ?? (def.service ? [def.service] : []);
+    if (!definitions.length) throw new NotFoundException("Template contains no service definitions");
+    const createdServices = [];
+    for (const definition of definitions) {
+      createdServices.push(await this.services.create({
+        projectId: project.id,
+        name: definition.name,
+        type: definition.type ?? (definition.dockerImage ? "DOCKER_SERVICE" : "WEB_SERVICE"),
+        runtime: definition.runtime ?? (definition.dockerImage ? "DOCKER" : "NODE"),
+        framework: definition.framework ?? "UNKNOWN",
+        rootDirectory: definition.rootDirectory,
+        buildCommand: definition.buildCommand,
+        startCommand: definition.startCommand,
+        port: definition.port,
+        healthCheckPath: definition.healthCheckPath,
+        resourcePreset: def.resourcePreset ?? "starter",
+      }));
+    }
+    const service = createdServices.find((item) => item.name === def.databaseTargetService) ?? createdServices[0]!;
 
     if (def.needsDatabase) {
       const database = await this.databases.create({
         organizationId: dto.organizationId,
         name: `${slug}-db`,
-        engine: "POSTGRESQL",
+        engine: def.databaseEngine ?? "POSTGRESQL",
+        region: project.region,
         resourcePreset: def.resourcePreset ?? "starter",
       });
       const conn = await this.databases.getConnectionInfo(database.id);
@@ -98,12 +111,18 @@ export class TemplatesService {
     }
 
     if (def.needsRedis) {
+      const redisTarget = createdServices.find((item) => item.name === def.redisTargetService) ?? service;
       await this.redis.create({
         projectId: project.id,
         name: `${slug}-cache`,
         resourcePreset: def.resourcePreset ?? "nano",
-        attachToServiceId: service.id,
+        attachToServiceId: redisTarget.id,
+        region: project.region,
       });
+    }
+
+    for (const bucket of def.storage ?? []) {
+      await this.storage.createBucket({ organizationId: dto.organizationId, name: `${slug}-${bucket.name}`.slice(0, 62), isPublic: bucket.isPublic, region: project.region });
     }
 
     for (const [key, value] of Object.entries(def.staticEnvVars ?? {})) {
@@ -122,13 +141,19 @@ export class TemplatesService {
       await this.envVars.create({ projectId: project.id, serviceId: service.id, key, value, isSecret: true }, userId);
     }
 
-    const deployment = await this.deployments.create(
-      { projectId: project.id, serviceId: service.id },
-      userId,
-      false,
-      { sha: `template:${template.slug}`, message: `Deployed from template: ${template.name}` },
-      { dockerImageTag: def.service.dockerImage, registryPath: null },
-    );
+    const deployments = [];
+    for (let index = 0; index < createdServices.length; index += 1) {
+      const currentService = createdServices[index]!;
+      const definition = definitions[index]!;
+      deployments.push(await this.deployments.create(
+        { projectId: project.id, serviceId: currentService.id },
+        userId,
+        false,
+        { sha: `template:${template.slug}`, message: `Deployed from template: ${template.name}` },
+        definition.dockerImage ? { dockerImageTag: definition.dockerImage, registryPath: null } : undefined,
+      ));
+    }
+    const deployment = deployments[0]!;
 
     await this.activityLog.log({
       organizationId: dto.organizationId,
@@ -139,7 +164,7 @@ export class TemplatesService {
       resourceId: template.id,
     });
 
-    return { project, service, deployment };
+    return { project, service, services: createdServices, deployment, deployments };
   }
 
   private slugify(name: string): string {

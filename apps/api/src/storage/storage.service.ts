@@ -57,7 +57,7 @@ export class StorageService {
     if (existing) throw new ConflictException("A bucket with this name already exists");
 
     const bucket = await this.prisma.storageBucket.create({
-      data: { organizationId: dto.organizationId, name: dto.name, isPublic: dto.isPublic ?? false },
+      data: { organizationId: dto.organizationId, name: dto.name, isPublic: dto.isPublic ?? false, region: dto.region ?? "us-east" },
     });
     await this.getS3().ensureBucket(this.physicalBucket(bucket));
     return bucket;

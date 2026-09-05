@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser, RequestUser } from "../common/decorators/current-user.decorator";
@@ -10,7 +10,7 @@ import { OrgRole } from "@clouddeploy/database";
 
 @ApiTags("deployments")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(AnyAuthGuard, RolesGuard)
 @Controller({ path: "deployments", version: "1" })
 export class DeploymentsController {
   constructor(private readonly deploymentsService: DeploymentsService) {}
@@ -32,6 +32,12 @@ export class DeploymentsController {
   @ApiOperation({ summary: "Get deployment details, including logs" })
   findOne(@Param("deploymentId") deploymentId: string) {
     return this.deploymentsService.findOne(deploymentId);
+  }
+
+  @Get(":deploymentId/logs")
+  @ApiOperation({ summary: "List deployment log entries for polling or SDK streaming" })
+  logs(@Param("deploymentId") deploymentId: string, @Query("after") after?: string, @Query("limit") limit?: number) {
+    return this.deploymentsService.logs(deploymentId, after, limit);
   }
 
   @Post(":deploymentId/redeploy")

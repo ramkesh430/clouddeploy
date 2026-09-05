@@ -1,0 +1,1 @@
+ALTER TYPE "ServerCommandType" ADD VALUE 'REMOVE';

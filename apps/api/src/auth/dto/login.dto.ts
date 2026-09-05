@@ -1,5 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { IsEmail, IsOptional, IsString, Length, MinLength } from "class-validator";
 
 export class LoginDto {
   @ApiProperty({ example: "ada@example.com" })
@@ -10,4 +10,10 @@ export class LoginDto {
   @IsString()
   @MinLength(8)
   password!: string;
+
+  @ApiProperty({ required: false, description: "Authenticator or recovery code when 2FA is enabled" })
+  @IsOptional()
+  @IsString()
+  @Length(6, 16)
+  otpCode?: string;
 }

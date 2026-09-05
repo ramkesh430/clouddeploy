@@ -9,6 +9,7 @@ import { RedisDbModule } from "../redis-db/redis-db.module";
 import { EnvironmentVariablesModule } from "../environment-variables/environment-variables.module";
 import { DeploymentsModule } from "../deployments/deployments.module";
 import { ActivityLogModule } from "../activity-log/activity-log.module";
+import { StorageModule } from "../storage/storage.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ActivityLogModule } from "../activity-log/activity-log.module";
     EnvironmentVariablesModule,
     DeploymentsModule,
     ActivityLogModule,
+    StorageModule,
   ],
   controllers: [TemplatesController],
   providers: [TemplatesService, RolesGuard],

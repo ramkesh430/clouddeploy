@@ -1,0 +1,34 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import { toast } from "@/lib/store/toast-store";
+
+export interface AIAnalysis { id: string; type: string; result: Record<string, unknown>; proposals: Array<{ id: string; title: string; explanation: string; status: string; actionType: string; payload: Record<string, unknown> }>; secretsRedacted: number; createdAt: string }
+export function useAIAnalyses(organizationId?: string, projectId?: string) { return useQuery({ queryKey: ["ai-analyses", organizationId, projectId], queryFn: () => api.get<AIAnalysis[]>(`/ai/analyses?organizationId=${organizationId}${projectId ? `&projectId=${projectId}` : ""}`), enabled: !!organizationId }); }
+export function useRepositoryAnalysis() { const client = useQueryClient(); return useMutation({ mutationFn: (input: { organizationId: string; projectId?: string; repositoryFullName: string; files: Array<{ path: string; content?: string }> }) => api.post<AIAnalysis>("/ai/repository-analysis", input), onSuccess: () => { client.invalidateQueries({ queryKey: ["ai-analyses"] }); toast({ title: "Repository analysis complete", variant: "success" }); } }); }
+export function useLogAnalysis() { const client = useQueryClient(); return useMutation({ mutationFn: (input: { organizationId: string; deploymentId: string; logs?: string }) => api.post<AIAnalysis>("/ai/log-analysis", input), onSuccess: () => client.invalidateQueries({ queryKey: ["ai-analyses"] }) }); }
+export function useResourceRecommendation() { return useMutation({ mutationFn: (input: { organizationId: string; projectId: string; serviceId?: string; trafficRequestsPerMinute?: number }) => api.post<AIAnalysis>("/ai/resource-recommendations", input) }); }
+export function useApplyAIFix() { const client = useQueryClient(); return useMutation({ mutationFn: ({ proposalId, overrides }: { proposalId: string; overrides?: Record<string, unknown> }) => api.post(`/ai/fixes/${proposalId}/apply`, { overrides }), onSuccess: () => { client.invalidateQueries({ queryKey: ["ai-analyses"] }); toast({ title: "Reviewed fix applied", variant: "success" }); } }); }
+
+export interface AgencySummary { clients: number; projects: number; healthy: number; failed: number; monthlyHostingCostCents: number; monthlyRevenueCents: number; storageBytes: string; expiringDomains: number; failedBackups: number }
+export interface AgencyClient { id: string; name: string; company: string | null; email: string; phone: string | null; status: string; billingReference: string | null; _count?: { projects: number } }
+export function useAgencyDashboard(organizationId?: string) { return useQuery({ queryKey: ["agency-dashboard", organizationId], queryFn: () => api.get<AgencySummary>(`/agency/dashboard?organizationId=${organizationId}`), enabled: !!organizationId }); }
+export function useAgencyClients(organizationId?: string) { return useQuery({ queryKey: ["agency-clients", organizationId], queryFn: () => api.get<{ data: AgencyClient[]; nextCursor: string | null }>(`/agency/clients?organizationId=${organizationId}`), enabled: !!organizationId }); }
+export function useAgencyClient(clientId?: string) { return useQuery({ queryKey: ["agency-client", clientId], queryFn: () => api.get<AgencyClient & { notes: string | null; projects: Array<{ id: string; monthlyCostCents: number; monthlyRevenueCents: number; project: { id: string; name: string; status: string; region: string; services: Array<{ id: string; name: string; status: string }> } }> }>(`/agency/clients/${clientId}`), enabled: !!clientId }); }
+export function useCreateAgencyClient() { const client = useQueryClient(); return useMutation({ mutationFn: (input: { organizationId: string; name: string; email: string; company?: string }) => api.post<AgencyClient>("/agency/clients", input), onSuccess: () => { client.invalidateQueries({ queryKey: ["agency-clients"] }); client.invalidateQueries({ queryKey: ["agency-dashboard"] }); } }); }
+export function useBranding(organizationId?: string) { return useQuery({ queryKey: ["agency-branding", organizationId], queryFn: () => api.get<Record<string, string | boolean | null> | null>(`/agency/branding?organizationId=${organizationId}`), enabled: !!organizationId }); }
+export function useUpdateBranding() { const client = useQueryClient(); return useMutation({ mutationFn: (input: Record<string, unknown> & { organizationId: string; brandName: string }) => api.patch("/agency/branding", input), onSuccess: () => { client.invalidateQueries({ queryKey: ["agency-branding"] }); toast({ title: "Brand settings saved", variant: "success" }); } }); }
+
+export interface Region { id: string; code: string; name: string; country: string | null; city: string | null; continent: string; active: boolean }
+export function useRegions() { return useQuery({ queryKey: ["regions"], queryFn: () => api.get<Region[]>("/regions", { skipAuth: true }) }); }
+
+export interface SupportTicket { id: string; subject: string; category: string; priority: string; status: string; updatedAt: string; _count?: { messages: number } }
+export function useSupportTickets(organizationId?: string) { return useQuery({ queryKey: ["support-tickets", organizationId], queryFn: () => api.get<SupportTicket[]>(`/support/tickets?organizationId=${organizationId}`), enabled: !!organizationId }); }
+export function useCreateSupportTicket() { const client = useQueryClient(); return useMutation({ mutationFn: (input: { organizationId: string; subject: string; category: string; priority: string; message: string }) => api.post("/support/tickets", input), onSuccess: () => { client.invalidateQueries({ queryKey: ["support-tickets"] }); toast({ title: "Support ticket opened", variant: "success" }); } }); }
+
+export function useSecurityOverview() { return useQuery({ queryKey: ["security-overview"], queryFn: () => api.get<{ twoFactorEnabled: boolean; sessions: Array<{ id: string; ipAddress: string | null; userAgent: string | null; createdAt: string }>; loginEvents: Array<{ id: string; successful: boolean; suspicious: boolean; ipAddress: string | null; createdAt: string }>; _count: { recoveryCodes: number } }>("/security") }); }
+export function useTwoFactorSetup() { return useMutation({ mutationFn: () => api.post<{ secret: string; otpauthUrl: string }>("/security/2fa/setup") }); }
+export function useTwoFactorEnable() { const client = useQueryClient(); return useMutation({ mutationFn: (code: string) => api.post<{ enabled: boolean; recoveryCodes: string[] }>("/security/2fa/enable", { code }), onSuccess: () => client.invalidateQueries({ queryKey: ["security-overview"] }) }); }
+
+export function useAdminResource<T = unknown>(path: string) { return useQuery({ queryKey: ["admin", path], queryFn: () => api.get<T>(path), refetchInterval: path.includes("dashboard") || path.includes("infrastructure") ? 15_000 : false }); }

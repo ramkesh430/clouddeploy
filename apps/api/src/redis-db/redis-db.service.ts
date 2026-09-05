@@ -31,6 +31,8 @@ export class RedisDbService {
     const password = crypto.randomBytes(18).toString("base64url");
     const url = new URL(this.config.getOrThrow<string>("REDIS_URL"));
     const platformDomain = this.config.get<string>("PLATFORM_DOMAIN") ?? "clouddeploy.app";
+    const project = await this.prisma.project.findUnique({ where: { id: dto.projectId }, select: { region: true } });
+    if (!project) throw new NotFoundException("Project not found");
 
     const service = await this.prisma.service.create({
       data: {
@@ -52,7 +54,7 @@ export class RedisDbService {
         serviceId: service.id,
         name: dto.name,
         status: "PROVISIONING",
-        region: "us-east",
+        region: dto.region ?? project.region,
         host: `${dto.name}.${platformDomain}`,
         privateHost: `${dto.name}.internal`,
         port: Number(url.port || 6379),

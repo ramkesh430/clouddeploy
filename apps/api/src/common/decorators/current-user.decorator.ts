@@ -3,6 +3,7 @@ import { createParamDecorator, ExecutionContext } from "@nestjs/common";
 export interface RequestUser {
   id: string;
   email: string;
+  isPlatformAdmin?: boolean;
 }
 
 /** Pulls the authenticated user (attached by JwtAuthGuard) off the request. */

@@ -17,4 +17,9 @@ export class DeployTemplateDto {
   @IsString()
   @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, { message: "Slug must be lowercase letters, numbers, and hyphens only" })
   projectSlug?: string;
+
+  @ApiPropertyOptional({ example: "us-east", description: "Deployment region; stateful dependencies are colocated" })
+  @IsOptional()
+  @IsString()
+  region?: string;
 }

@@ -87,11 +87,14 @@ async function main() {
   // ── Regions ──────────────────────────────────────────────────────────
   await Promise.all(
     [
-      { code: "us-east", name: "US East (Virginia)", continent: "North America" },
-      { code: "us-west", name: "US West (Oregon)", continent: "North America" },
-      { code: "eu-west", name: "EU West (Ireland)", continent: "Europe" },
-      { code: "ap-south", name: "Asia Pacific (Mumbai)", continent: "Asia" },
-    ].map((r) => prisma.region.upsert({ where: { code: r.code }, update: {}, create: r })),
+      { code: "us-east", name: "Virginia", continent: "North America", country: "United States", city: "Ashburn" },
+      { code: "us-west", name: "Oregon", continent: "North America", country: "United States", city: "Portland" },
+      { code: "eu-west", name: "Ireland", continent: "Europe", country: "Ireland", city: "Dublin" },
+      { code: "eu-central", name: "Frankfurt", continent: "Europe", country: "Germany", city: "Frankfurt" },
+      { code: "ap-south", name: "Mumbai", continent: "Asia", country: "India", city: "Mumbai" },
+      { code: "ap-southeast", name: "Singapore", continent: "Asia", country: "Singapore", city: "Singapore" },
+      { code: "me-central", name: "Dubai", continent: "Asia", country: "United Arab Emirates", city: "Dubai" },
+    ].map((r) => prisma.region.upsert({ where: { code: r.code }, update: { ...r, active: true }, create: r })),
   );
 
   // ── Admin user ───────────────────────────────────────────────────────
@@ -120,13 +123,34 @@ async function main() {
     },
   });
 
+  // ── Public status page & local regional capacity ────────────────────
+  for (const [sortOrder, name] of ["API", "Dashboard", "Build System", "Runtime", "Databases", "Storage", "DNS", "SSL", "GitHub Integration"].entries()) {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    await prisma.platformService.upsert({ where: { slug }, create: { slug, name, sortOrder }, update: { name, sortOrder } });
+  }
+
+  const runtimeServer = await prisma.server.upsert({
+    where: { hostname: "local-runtime-us-east" },
+    create: { hostname: "local-runtime-us-east", ipAddress: "127.0.0.1", region: "us-east", role: "RUNTIME_NODE", cpuCores: 16, ramMb: 32768, diskMb: 262144, lastHeartbeatAt: new Date() },
+    update: { status: "ONLINE", lastHeartbeatAt: new Date() },
+  });
+  await prisma.runtimeNode.upsert({ where: { serverId: runtimeServer.id }, create: { serverId: runtimeServer.id, region: "us-east", totalCpuCores: 16, totalRamMb: 32768, totalDiskMb: 262144 }, update: { status: "ONLINE" } });
+
+  const buildServer = await prisma.server.upsert({
+    where: { hostname: "local-builder-us-east" },
+    create: { hostname: "local-builder-us-east", ipAddress: "127.0.0.1", region: "us-east", role: "BUILD_WORKER", cpuCores: 8, ramMb: 16384, diskMb: 131072, lastHeartbeatAt: new Date() },
+    update: { status: "ONLINE", lastHeartbeatAt: new Date() },
+  });
+  await prisma.buildWorker.upsert({ where: { serverId: buildServer.id }, create: { serverId: buildServer.id, region: "us-east", maxConcurrentBuilds: 4 }, update: { status: "ONLINE" } });
+
   // ── Organization ─────────────────────────────────────────────────────
   const org = await prisma.organization.upsert({
     where: { slug: "acme-inc" },
-    update: {},
+    update: { isAgency: true },
     create: {
       name: "Acme Inc",
       slug: "acme-inc",
+      isAgency: true,
       members: {
         create: [
           { email: adminUser.email, userId: adminUser.id, role: "OWNER", status: "ACTIVE", joinedAt: new Date() },
@@ -160,6 +184,15 @@ async function main() {
       createdBy: demoUser.id,
     },
   });
+
+  const agencyClient = await prisma.agencyClient.upsert({
+    where: { organizationId_email: { organizationId: org.id, email: "ops@northstar.example" } },
+    create: { organizationId: org.id, name: "Maya Chen", company: "Northstar Retail", email: "ops@northstar.example", phone: "+1 555 0142", billingReference: "NS-2026", notes: "Priority ecommerce client" },
+    update: { status: "ACTIVE" },
+  });
+  await prisma.clientProject.upsert({ where: { projectId: project.id }, create: { clientId: agencyClient.id, projectId: project.id, monthlyCostCents: 3200, monthlyRevenueCents: 7900 }, update: { clientId: agencyClient.id, monthlyCostCents: 3200, monthlyRevenueCents: 7900 } });
+  await prisma.clientPortalAccess.upsert({ where: { clientId: agencyClient.id }, create: { clientId: agencyClient.id, metricsReadOnly: true, invoicesVisible: true, deploymentStatus: true, domainStatus: true, supportAccess: true }, update: {} });
+  await prisma.agencyBranding.upsert({ where: { organizationId: org.id }, create: { organizationId: org.id, brandName: "Acme Cloud Studio", primaryAccent: "#2563eb", supportEmail: "support@acme.example" }, update: {} });
 
   const frontend = await prisma.service.create({
     data: {
@@ -197,6 +230,12 @@ async function main() {
       publicUrl: "https://api.shopfront.clouddeploy.app",
       internalHostname: "backend.internal",
     },
+  });
+
+  await prisma.autoscalingPolicy.upsert({
+    where: { serviceId: backend.id },
+    create: { projectId: project.id, serviceId: backend.id, enabled: true, minimumInstances: 1, maximumInstances: 5, cpuThresholdPct: 75, memoryThresholdPct: 80, requestThreshold: 2500, scaleUpCooldownSeconds: 120, scaleDownCooldownSeconds: 300 },
+    update: {},
   });
 
   const dbService = await prisma.service.create({
@@ -328,6 +367,8 @@ async function main() {
   // use, since the underlying container-run step is the same simulated
   // step every deployment in this MVP goes through (see README).
   const categoryDefs = [
+    { name: "Framework Starters", slug: "framework-starters" },
+    { name: "Full-stack", slug: "full-stack" },
     { name: "Automation", slug: "automation" },
     { name: "Headless CMS", slug: "headless-cms" },
     { name: "Analytics & BI", slug: "analytics-bi" },
@@ -341,6 +382,109 @@ async function main() {
   }
 
   const templateDefs = [
+    {
+      slug: "nextjs",
+      name: "Next.js",
+      categorySlug: "framework-starters",
+      description: "Production-ready Next.js starter with a health check and region-aware web service.",
+      logoUrl: "https://cdn.simpleicons.org/nextdotjs",
+      repositoryUrl: "https://github.com/vercel/next.js/tree/canary/examples/hello-world",
+      isFeatured: true,
+      estimatedMonthlyUsd: 5,
+      requiredEnvVars: [],
+      servicesJson: {
+        services: [{ name: "web", type: "WEB_SERVICE", runtime: "NODE", framework: "NEXTJS", rootDirectory: ".", buildCommand: "npm run build", startCommand: "npm start", port: 3000, healthCheckPath: "/" }],
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "react-node",
+      name: "React + Node",
+      categorySlug: "full-stack",
+      description: "Two-service React frontend and Express API with private service discovery.",
+      logoUrl: "https://cdn.simpleicons.org/react",
+      isFeatured: true,
+      estimatedMonthlyUsd: 10,
+      requiredEnvVars: ["SESSION_SECRET"],
+      servicesJson: {
+        services: [
+          { name: "frontend", type: "STATIC_SITE", runtime: "NODE", framework: "REACT", rootDirectory: "frontend", buildCommand: "npm run build", startCommand: "npm run preview -- --host 0.0.0.0", port: 4173, healthCheckPath: "/" },
+          { name: "api", type: "API_SERVICE", runtime: "NODE", framework: "EXPRESS", rootDirectory: "api", buildCommand: "npm run build", startCommand: "npm start", port: 3000, healthCheckPath: "/health" },
+        ],
+        databaseTargetService: "api",
+        needsDatabase: true,
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "mern",
+      name: "MERN",
+      categorySlug: "full-stack",
+      description: "React and Node starter prepared for an external MongoDB connection.",
+      logoUrl: "https://cdn.simpleicons.org/mongodb",
+      isFeatured: false,
+      estimatedMonthlyUsd: 10,
+      requiredEnvVars: ["MONGODB_URI", "SESSION_SECRET"],
+      servicesJson: {
+        services: [
+          { name: "frontend", type: "STATIC_SITE", runtime: "NODE", framework: "REACT", rootDirectory: "client", buildCommand: "npm run build", startCommand: "npm run preview -- --host 0.0.0.0", port: 4173 },
+          { name: "api", type: "API_SERVICE", runtime: "NODE", framework: "EXPRESS", rootDirectory: "server", buildCommand: "npm run build", startCommand: "npm start", port: 3000, healthCheckPath: "/health" },
+        ],
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "laravel",
+      name: "Laravel",
+      categorySlug: "framework-starters",
+      description: "Laravel application service with a colocated managed MySQL database definition.",
+      logoUrl: "https://cdn.simpleicons.org/laravel",
+      repositoryUrl: "https://github.com/laravel/laravel",
+      isFeatured: false,
+      estimatedMonthlyUsd: 10,
+      requiredEnvVars: ["APP_KEY"],
+      servicesJson: {
+        services: [{ name: "app", type: "API_SERVICE", runtime: "PHP", framework: "LARAVEL", buildCommand: "composer install --no-dev --optimize-autoloader", startCommand: "php artisan serve --host=0.0.0.0 --port=8000", port: 8000, healthCheckPath: "/up" }],
+        needsDatabase: true,
+        databaseEngine: "MYSQL",
+        databaseEnvVars: { host: "DB_HOST", port: "DB_PORT", database: "DB_DATABASE", username: "DB_USERNAME", password: "DB_PASSWORD" },
+        staticEnvVars: { DB_CONNECTION: "mysql" },
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "django",
+      name: "Django",
+      categorySlug: "framework-starters",
+      description: "Django web service with PostgreSQL, static storage, and secure defaults.",
+      logoUrl: "https://cdn.simpleicons.org/django",
+      isFeatured: false,
+      estimatedMonthlyUsd: 10,
+      requiredEnvVars: ["DJANGO_SECRET_KEY"],
+      servicesJson: {
+        services: [{ name: "web", type: "WEB_SERVICE", runtime: "PYTHON", framework: "DJANGO", buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput", startCommand: "gunicorn config.wsgi:application --bind 0.0.0.0:8000", port: 8000, healthCheckPath: "/health" }],
+        needsDatabase: true,
+        storage: [{ name: "media", isPublic: true }],
+        resourcePreset: "starter",
+      },
+    },
+    {
+      slug: "wordpress",
+      name: "WordPress",
+      categorySlug: "cms-blogging",
+      description: "Official WordPress image with a managed MySQL database and persistent content volume definition.",
+      logoUrl: "https://cdn.simpleicons.org/wordpress",
+      isFeatured: true,
+      estimatedMonthlyUsd: 12,
+      requiredEnvVars: [],
+      servicesJson: {
+        services: [{ name: "wordpress", dockerImage: "wordpress:6-php8.3-apache", type: "DOCKER_SERVICE", runtime: "DOCKER", framework: "UNKNOWN", port: 80, healthCheckPath: "/", volumes: [{ mountPath: "/var/www/html/wp-content", sizeMb: 5120 }] }],
+        needsDatabase: true,
+        databaseEngine: "MYSQL",
+        databaseEnvVars: { host: "WORDPRESS_DB_HOST", database: "WORDPRESS_DB_NAME", username: "WORDPRESS_DB_USER", password: "WORDPRESS_DB_PASSWORD" },
+        resourcePreset: "starter",
+      },
+    },
     {
       slug: "n8n",
       name: "n8n",

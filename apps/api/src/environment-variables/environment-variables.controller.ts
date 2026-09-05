@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser, RequestUser } from "../common/decorators/current-user.decorator";
@@ -11,7 +11,7 @@ import { EnvironmentTarget, OrgRole } from "@clouddeploy/database";
 
 @ApiTags("environment-variables")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(AnyAuthGuard, RolesGuard)
 @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
 @Controller({ path: "environment-variables", version: "1" })
 export class EnvironmentVariablesController {

@@ -168,6 +168,33 @@ export class RolesGuard implements CanActivate {
       const webhook = await this.prisma.webhook.findUnique({ where: { id: webhookId }, select: { organizationId: true } });
       return webhook?.organizationId;
     }
+
+    const proposalId = request.params?.proposalId;
+    if (proposalId) {
+      const proposal = await this.prisma.aIFixProposal.findUnique({
+        where: { id: proposalId },
+        select: { analysis: { select: { organizationId: true } } },
+      });
+      return proposal?.analysis.organizationId;
+    }
+
+    const clientId = request.params?.clientId;
+    if (clientId) {
+      const client = await this.prisma.agencyClient.findUnique({ where: { id: clientId }, select: { organizationId: true } });
+      return client?.organizationId;
+    }
+
+    const ticketId = request.params?.ticketId;
+    if (ticketId) {
+      const ticket = await this.prisma.supportTicket.findUnique({ where: { id: ticketId }, select: { organizationId: true } });
+      return ticket?.organizationId;
+    }
+
+    const analysisId = request.params?.analysisId;
+    if (analysisId) {
+      const analysis = await this.prisma.aIAnalysis.findUnique({ where: { id: analysisId }, select: { organizationId: true } });
+      return analysis?.organizationId;
+    }
     return undefined;
   }
 }

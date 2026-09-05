@@ -1,0 +1,17 @@
+{
+  "name": "@clouddeploy/cli",
+  "version": "0.1.0",
+  "description": "CloudDeploy command-line interface",
+  "main": "./dist/index.js",
+  "bin": { "clouddeploy": "./dist/index.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": { "@clouddeploy/sdk": "*" },
+  "devDependencies": { "@types/node": "^20.16.5" },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}

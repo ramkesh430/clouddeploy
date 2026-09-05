@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { Throttle } from "@nestjs/throttler";
@@ -8,6 +8,8 @@ import { LoginDto } from "./dto/login.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { AuthTokens } from "@clouddeploy/types";
+import { AnyAuthGuard } from "./guards/any-auth.guard";
+import { CurrentUser, RequestUser } from "../common/decorators/current-user.decorator";
 
 const REFRESH_COOKIE = "cd_refresh_token";
 
@@ -56,6 +58,13 @@ export class AuthController {
     if (refreshToken) await this.authService.logout(refreshToken);
     res.clearCookie(REFRESH_COOKIE);
     return { loggedOut: true };
+  }
+
+  @Get("me")
+  @UseGuards(AnyAuthGuard)
+  @ApiOperation({ summary: "Return the authenticated user/API-key principal and workspaces" })
+  me(@CurrentUser() user: RequestUser) {
+    return this.authService.me(user.id);
   }
 
   @Get("verify-email")

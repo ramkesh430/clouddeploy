@@ -27,6 +27,15 @@ import { UsageModule } from "./usage/usage.module";
 import { AlertsModule } from "./alerts/alerts.module";
 import { MetricsModule } from "./metrics/metrics.module";
 import { TemplatesModule } from "./templates/templates.module";
+import { AiModule } from "./ai/ai.module";
+import { AgencyModule } from "./agency/agency.module";
+import { InfrastructureModule } from "./infrastructure/infrastructure.module";
+import { AutoscalingModule } from "./autoscaling/autoscaling.module";
+import { SecuritySettingsModule } from "./security-settings/security-settings.module";
+import { SupportModule } from "./support/support.module";
+import { AbuseModule } from "./abuse/abuse.module";
+import { StatusModule } from "./status/status.module";
+import { AdminModule } from "./admin/admin.module";
 
 @Module({
   imports: [
@@ -62,6 +71,15 @@ import { TemplatesModule } from "./templates/templates.module";
     AlertsModule,
     MetricsModule,
     TemplatesModule,
+    AiModule,
+    AgencyModule,
+    InfrastructureModule,
+    AutoscalingModule,
+    SecuritySettingsModule,
+    SupportModule,
+    AbuseModule,
+    StatusModule,
+    AdminModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

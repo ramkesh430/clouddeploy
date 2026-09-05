@@ -1,0 +1,15 @@
+"use client";
+
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useActiveOrganization } from "@/hooks/use-active-organization";
+import { useCreateSupportTicket, useSupportTickets } from "@/hooks/use-phase3";
+
+export default function SupportPage() {
+  const { active } = useActiveOrganization(); const { data } = useSupportTickets(active?.id); const create = useCreateSupportTicket(); const [subject, setSubject] = useState(""); const [message, setMessage] = useState(""); const [priority, setPriority] = useState("NORMAL"); const [category, setCategory] = useState("GENERAL");
+  return <div className="space-y-6"><div><h1 className="text-2xl font-semibold tracking-tight">Support</h1><p className="text-sm text-muted-foreground">Open a ticket and keep the full conversation attached to your workspace.</p></div><div className="grid gap-5 lg:grid-cols-[1fr_380px]"><Card><CardHeader><CardTitle>Your tickets</CardTitle></CardHeader><CardContent className="divide-y p-0">{(data ?? []).map((ticket) => <div key={ticket.id} className="flex items-center justify-between p-4"><div><p className="font-medium">{ticket.subject}</p><p className="text-xs text-muted-foreground">{ticket.category} · updated {new Date(ticket.updatedAt).toLocaleDateString()}</p></div><div className="flex gap-2"><Badge variant="outline">{ticket.priority}</Badge><Badge variant={ticket.status === "RESOLVED" ? "success" : "secondary"}>{ticket.status}</Badge></div></div>)}{!data?.length && <p className="p-8 text-center text-sm text-muted-foreground">No tickets yet.</p>}</CardContent></Card><Card><CardHeader><CardTitle>Open ticket</CardTitle></CardHeader><CardContent className="space-y-3"><div><Label>Subject</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} /></div><div className="grid grid-cols-2 gap-3"><select className="h-10 rounded-md border bg-background px-3 text-sm" value={category} onChange={(e) => setCategory(e.target.value)}>{["GENERAL", "BILLING", "DEPLOYMENT", "DATABASE", "DOMAIN", "SECURITY", "ABUSE"].map((item) => <option key={item}>{item}</option>)}</select><select className="h-10 rounded-md border bg-background px-3 text-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>{["LOW", "NORMAL", "HIGH", "URGENT"].map((item) => <option key={item}>{item}</option>)}</select></div><textarea className="min-h-32 w-full rounded-md border p-3 text-sm" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="How can we help?" /><Button className="w-full" disabled={!active || !subject || !message} loading={create.isPending} onClick={() => active && create.mutate({ organizationId: active.id, subject, category, priority, message }, { onSuccess: () => { setSubject(""); setMessage(""); } })}>Open ticket</Button></CardContent></Card></div></div>;
+}

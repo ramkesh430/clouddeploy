@@ -1,4 +1,6 @@
-import { CanActivate, ExecutionContext, ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException } from "@nestjs/common";
+import { CanActivate, ExecutionContext, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import Redis from "ioredis";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { hashApiKey } from "@clouddeploy/security";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -13,10 +15,13 @@ import { PrismaService } from "../../prisma/prisma.service";
  */
 @Injectable()
 export class AnyAuthGuard implements CanActivate {
-  private readonly rateBuckets = new Map<string, { minute: number; count: number }>();
+  private readonly logger = new Logger("AnyAuthGuard");
+  private redisClient: Redis | null = null;
+
   constructor(
     private readonly jwtGuard: JwtAuthGuard,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -54,7 +59,7 @@ export class AnyAuthGuard implements CanActivate {
 
     const planTier = apiKey.organization.subscription?.plan.tier ?? "FREE";
     const planLimit = ({ FREE: 60, DEVELOPER: 120, PRO: 300, BUSINESS: 1_000, ENTERPRISE: 5_000 } as const)[planTier];
-    this.consumeRateLimit(apiKey.id, Math.min(apiKey.rateLimitPerMinute ?? planLimit, planLimit));
+    await this.consumeRateLimit(apiKey.id, Math.min(apiKey.rateLimitPerMinute ?? planLimit, planLimit));
 
     this.prisma.aPIKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
 
@@ -77,15 +82,38 @@ export class AnyAuthGuard implements CanActivate {
     return null;
   }
 
-  private consumeRateLimit(keyId: string, limit: number) {
-    const minute = Math.floor(Date.now() / 60_000);
-    const bucket = this.rateBuckets.get(keyId);
-    if (!bucket || bucket.minute !== minute) {
-      this.rateBuckets.set(keyId, { minute, count: 1 });
+  private getRedisClient(): Redis {
+    if (!this.redisClient) {
+      this.redisClient = new Redis(this.config.getOrThrow<string>("REDIS_URL"));
+    }
+    return this.redisClient;
+  }
+
+  /** Fixed-window counter in Redis, shared across every API process — the
+   * in-memory Map this replaced reset per-process, so a client could get up
+   * to N requests per instance behind a load balancer instead of N total,
+   * and every limit reset on deploy/restart. INCR-then-conditionally-EXPIRE
+   * is Redis's own documented rate-limiting pattern: the tiny race between
+   * the two commands can at worst leave one key with a slightly-off TTL,
+   * never an incorrect count. Fails open (logs and allows the request) if
+   * Redis is unreachable, since a rate limiter outage shouldn't take down
+   * the API — this is defense-in-depth, not the primary authorization gate. */
+  private async consumeRateLimit(keyId: string, limit: number): Promise<void> {
+    const key = `ratelimit:apikey:${keyId}`;
+    let count: number;
+    try {
+      const client = this.getRedisClient();
+      count = await client.incr(key);
+      if (count === 1) {
+        await client.expire(key, 60);
+      }
+    } catch (err) {
+      this.logger.warn(`Rate limiter unavailable, allowing request: ${(err as Error).message}`);
       return;
     }
-    if (bucket.count >= limit) throw new HttpException("API key rate limit exceeded", HttpStatus.TOO_MANY_REQUESTS);
-    bucket.count += 1;
+    if (count > limit) {
+      throw new HttpException("API key rate limit exceeded", HttpStatus.TOO_MANY_REQUESTS);
+    }
   }
 
   private normalizeIp(value: string) { return value.replace(/^::ffff:/, ""); }

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { encryptSecret, decryptSecret } from "@clouddeploy/security";
+import { encryptSecret, decryptSecretWithFallback } from "@clouddeploy/security";
 import { PrismaService } from "../prisma/prisma.service";
 import { DeploymentsService } from "../deployments/deployments.service";
 import { GithubApiService } from "./github-api.service";
@@ -42,7 +42,7 @@ export class GithubService {
     const connection = await this.prisma.gitProviderConnection.findUnique({ where: { id: connectionId } });
     if (!connection) throw new NotFoundException("GitHub connection not found");
     if (!connection.accessToken) throw new BadRequestException("This connection has no stored access token");
-    return { connection, accessToken: decryptSecret(connection.accessToken, this.config.getOrThrow("ENCRYPTION_KEY")) };
+    return { connection, accessToken: decryptSecretWithFallback(connection.accessToken, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS")) };
   }
 
   async listRepositories(connectionId: string) {

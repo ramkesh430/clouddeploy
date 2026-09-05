@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import crypto from "node:crypto";
-import { encryptSecret, decryptSecret } from "@clouddeploy/security";
+import { encryptSecret, decryptSecretWithFallback } from "@clouddeploy/security";
 import { RESOURCE_PRESETS } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateDatabaseDto } from "./dto/create-database.dto";
@@ -168,7 +168,7 @@ export class DatabasesService {
       port: database.port,
       database: database.databaseName,
       username: database.username,
-      password: decryptSecret(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY")),
+      password: decryptSecretWithFallback(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS")),
       connectionUrl: this.buildConnectionUrl(database),
     };
   }
@@ -315,7 +315,7 @@ export class DatabasesService {
   }
 
   private buildConnectionUrl(database: { engine: string; username: string; passwordCipher: string; privateHost: string; port: number; databaseName: string }) {
-    const password = decryptSecret(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"));
+    const password = decryptSecretWithFallback(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS"));
     const scheme = database.engine === "POSTGRESQL" ? "postgresql" : "mysql";
     return `${scheme}://${database.username}:${password}@${database.privateHost}:${database.port}/${database.databaseName}`;
   }

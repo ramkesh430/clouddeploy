@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import crypto from "node:crypto";
-import { decryptSecret, encryptSecret, generateTotpSecret, hashPassword, verifyTotp } from "@clouddeploy/security";
+import { decryptSecretWithFallback, encryptSecret, generateTotpSecret, hashPassword, verifyTotp } from "@clouddeploy/security";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -25,7 +25,7 @@ export class SecuritySettingsService {
   async enableTwoFactor(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.twoFactorSecret) throw new BadRequestException("Start two-factor setup first");
-    const secret = decryptSecret(user.twoFactorSecret, this.key());
+    const secret = decryptSecretWithFallback(user.twoFactorSecret, this.key(), this.previousKey());
     if (!verifyTotp(secret, code)) throw new BadRequestException("Invalid authenticator code");
     const recoveryCodes = Array.from({ length: 10 }, () => crypto.randomBytes(6).toString("hex").toUpperCase());
     await this.prisma.$transaction(async (tx) => {
@@ -38,7 +38,7 @@ export class SecuritySettingsService {
 
   async disableTwoFactor(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.twoFactorSecret || !verifyTotp(decryptSecret(user.twoFactorSecret, this.key()), code)) throw new BadRequestException("Invalid authenticator code");
+    if (!user?.twoFactorSecret || !verifyTotp(decryptSecretWithFallback(user.twoFactorSecret, this.key(), this.previousKey()), code)) throw new BadRequestException("Invalid authenticator code");
     await this.prisma.$transaction([
       this.prisma.user.update({ where: { id: userId }, data: { twoFactorEnabled: false, twoFactorSecret: null } }),
       this.prisma.recoveryCode.deleteMany({ where: { userId } }),
@@ -52,4 +52,5 @@ export class SecuritySettingsService {
   }
 
   private key() { return this.config.getOrThrow<string>("ENCRYPTION_KEY"); }
+  private previousKey() { return this.config.get<string>("ENCRYPTION_KEY_PREVIOUS"); }
 }

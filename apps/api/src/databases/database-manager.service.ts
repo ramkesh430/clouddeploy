@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import crypto from "node:crypto";
-import { decryptSecret, encryptSecret } from "@clouddeploy/security";
+import { decryptSecretWithFallback, encryptSecret } from "@clouddeploy/security";
 import { PrismaService } from "../prisma/prisma.service";
 import { PostgresAdminService } from "./postgres-admin.service";
 
@@ -47,7 +47,7 @@ export class DatabaseManagerService {
     if (database.engine !== "POSTGRESQL") {
       throw new BadRequestException("The table browser and SQL editor currently support PostgreSQL only");
     }
-    const password = decryptSecret(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"));
+    const password = decryptSecretWithFallback(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS"));
     return this.postgresAdmin.createTenantPool(database.databaseName, database.username, password);
   }
 

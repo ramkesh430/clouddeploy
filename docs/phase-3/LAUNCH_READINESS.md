@@ -23,10 +23,10 @@
 
 - [ ] Ship and independently review hardened build-worker and runtime-agent executors.
 - [ ] Execute template stacks end-to-end on production-equivalent runtime nodes.
-- [ ] Move rate limiting/locks to HA Redis and load-test multiple API instances.
+- [x] Move API-key rate limiting to Redis, shared across every API process (fixed-window INCR/EXPIRE, fails open on a Redis outage). Locks/queues beyond rate limiting still need the same HA review before multi-instance load testing.
 - [ ] Add runtime process/network/egress telemetry and automated risk rules.
 - [ ] Complete image/dependency scanning and signature verification.
-- [ ] Complete encryption-key rotation worker and recovery drill.
+- [x] Encryption-key rotation worker: `POST /admin/security/rotate-encryption-key` re-encrypts every at-rest secret (env vars, database/Redis passwords, GitHub tokens, 2FA secrets, the dormant secrets vault) under `ENCRYPTION_KEY`, with `decryptSecretWithFallback` keeping reads working against not-yet-rotated rows during the transition (`ENCRYPTION_KEY_PREVIOUS`). Verified live: rotated a real key, confirmed zero-downtime reads mid-rotation, and confirmed data still decrypts with the previous key removed entirely. A full recovery drill (simulated key loss, restore procedure) is still outstanding.
 - [ ] Commission tenant isolation and arbitrary-code penetration tests.
 - [ ] Validate PostgreSQL, registry, storage, and full-region recovery exercises.
 - [ ] Define SLOs/on-call/escalation, support coverage, abuse policy, privacy terms, and data retention.

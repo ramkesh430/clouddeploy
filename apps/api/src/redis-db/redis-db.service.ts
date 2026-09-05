@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import crypto from "node:crypto";
-import { encryptSecret, decryptSecret } from "@clouddeploy/security";
+import { encryptSecret, decryptSecretWithFallback } from "@clouddeploy/security";
 import { RESOURCE_PRESETS } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisAdminService } from "./redis-admin.service";
@@ -87,7 +87,7 @@ export class RedisDbService {
   async getConnectionInfo(redisInstanceId: string) {
     const instance = await this.assertExists(redisInstanceId);
     const username = this.deriveUsername(instance.name);
-    const password = decryptSecret(instance.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"));
+    const password = decryptSecretWithFallback(instance.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS"));
     return {
       host: instance.privateHost,
       port: instance.port,

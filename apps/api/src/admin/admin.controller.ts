@@ -5,6 +5,7 @@ import { CurrentUser, RequestUser } from "../common/decorators/current-user.deco
 import { PlatformAdminGuard } from "../common/guards/platform-admin.guard";
 import { AddSupportMessageDto, UpdateSupportTicketDto } from "../support/dto/support.dto";
 import { SupportService } from "../support/support.service";
+import { EncryptionRotationService } from "../security-settings/encryption-rotation.service";
 import { AdminService } from "./admin.service";
 
 @ApiTags("admin")
@@ -12,7 +13,11 @@ import { AdminService } from "./admin.service";
 @UseGuards(JwtAuthGuard, PlatformAdminGuard)
 @Controller({ path: "admin", version: "1" })
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly support: SupportService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly support: SupportService,
+    private readonly encryptionRotation: EncryptionRotationService,
+  ) {}
   @Get("dashboard") dashboard() { return this.admin.dashboard(); }
   @Get("analytics") analytics(@Query("days") days?: number) { return this.admin.analytics(days); }
   @Get("users") users(@Query("limit") limit?: number, @Query("cursor") cursor?: string) { return this.admin.users(limit, cursor); }
@@ -30,6 +35,7 @@ export class AdminController {
   @Get("usage") usage(@Query("limit") limit?: number) { return this.admin.usage(limit); }
   @Get("system-logs") logs(@Query("limit") limit?: number) { return this.admin.logs(limit); }
   @Get("security") security() { return this.admin.security(); }
+  @Post("security/rotate-encryption-key") rotateEncryptionKey(@CurrentUser() user: RequestUser) { return this.encryptionRotation.rotate(user.id); }
   @Get("support/tickets") tickets(@CurrentUser() user: RequestUser) { return this.support.list("", user.id, true); }
   @Patch("support/tickets/:ticketId") updateTicket(@Param("ticketId") ticketId: string, @Body() dto: UpdateSupportTicketDto) { return this.support.update(ticketId, dto); }
   @Post("support/tickets/:ticketId/messages") reply(@Param("ticketId") ticketId: string, @Body() dto: AddSupportMessageDto, @CurrentUser() user: RequestUser) { return this.support.addMessage(ticketId, dto, user.id, true); }

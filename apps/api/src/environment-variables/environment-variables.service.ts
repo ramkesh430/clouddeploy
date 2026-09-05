@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { encryptSecret, decryptSecret, maskSecret } from "@clouddeploy/security";
+import { encryptSecret, decryptSecretWithFallback, maskSecret } from "@clouddeploy/security";
 import { EnvironmentTarget } from "@clouddeploy/database";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateEnvVarDto } from "./dto/create-env-var.dto";
@@ -25,7 +25,7 @@ export class EnvironmentVariablesService {
   async reveal(envVarId: string) {
     const row = await this.prisma.environmentVariable.findUnique({ where: { id: envVarId } });
     if (!row) throw new NotFoundException("Environment variable not found");
-    return { id: row.id, key: row.key, value: decryptSecret(row.valueCipher, this.encryptionKey()) };
+    return { id: row.id, key: row.key, value: decryptSecretWithFallback(row.valueCipher, this.encryptionKey(), this.previousEncryptionKey()) };
   }
 
   async create(dto: CreateEnvVarDto, updatedBy: string) {
@@ -130,7 +130,7 @@ export class EnvironmentVariablesService {
     let displayValue = maskSecret("••••••••");
     if (!row.isSecret) {
       try {
-        displayValue = decryptSecret(row.valueCipher, this.encryptionKey());
+        displayValue = decryptSecretWithFallback(row.valueCipher, this.encryptionKey(), this.previousEncryptionKey());
       } catch {
         displayValue = maskSecret("••••••••");
       }
@@ -154,5 +154,9 @@ export class EnvironmentVariablesService {
 
   private encryptionKey(): string {
     return this.config.getOrThrow<string>("ENCRYPTION_KEY");
+  }
+
+  private previousEncryptionKey(): string | undefined {
+    return this.config.get<string>("ENCRYPTION_KEY_PREVIOUS");
   }
 }

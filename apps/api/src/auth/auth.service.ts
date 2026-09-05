@@ -6,7 +6,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import crypto from "node:crypto";
-import { decryptSecret, hashPassword, verifyPassword, verifyTotp } from "@clouddeploy/security";
+import { decryptSecretWithFallback, hashPassword, verifyPassword, verifyTotp } from "@clouddeploy/security";
 import { JwtPayload, AuthTokens } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RegisterDto } from "./dto/register.dto";
@@ -250,7 +250,7 @@ export class AuthService {
   private async verifySecondFactor(userId: string, secretCipher: string | null, code: string) {
     if (secretCipher && /^\d{6}$/.test(code)) {
       try {
-        if (verifyTotp(decryptSecret(secretCipher, this.config.getOrThrow<string>("ENCRYPTION_KEY")), code)) return true;
+        if (verifyTotp(decryptSecretWithFallback(secretCipher, this.config.getOrThrow<string>("ENCRYPTION_KEY"), this.config.get<string>("ENCRYPTION_KEY_PREVIOUS")), code)) return true;
       } catch { /* fall through to recovery codes */ }
     }
     const recoveryCodes = await this.prisma.recoveryCode.findMany({ where: { userId, usedAt: null } });

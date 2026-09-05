@@ -49,6 +49,11 @@ export const envSchema = z.object({
 
   COOKIE_SECRET: z.string().min(32).default("dev-only-cookie-secret-change-me-in-prod!!"),
   ENCRYPTION_KEY: z.string().min(32).default("dev-only-encryption-key-change-me-in-prod!"),
+  /** Set to the outgoing key while a rotation is in progress — every
+   * encrypted column falls back to this key when ENCRYPTION_KEY can't
+   * decrypt a row, so reads keep working mid-rotation. Remove it once
+   * POST /admin/security/rotate-encryption-key reports every row rotated. */
+  ENCRYPTION_KEY_PREVIOUS: z.string().min(32).optional(),
 
   /** Defaults target the local Mailpit container (infra/docker/docker-compose.yml)
    * which accepts any SMTP auth and exposes a web UI at :8025 to read what was sent. */

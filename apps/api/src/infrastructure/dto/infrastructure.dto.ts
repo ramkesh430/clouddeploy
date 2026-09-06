@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { ContainerStatus, NodeRole, ServerCommandStatus, ServerCommandType } from "@clouddeploy/database";
 
 export class CreateRegionDto {
@@ -27,6 +27,29 @@ export class ContainerHeartbeatDto {
   @IsOptional() @IsString() privateIp?: string;
 }
 
+export class TelemetryProcessDto {
+  @IsString() pid!: string;
+  @IsNumber() @Min(0) cpuPct!: number;
+  @IsString() @MaxLength(500) command!: string;
+}
+
+export class TelemetryConnectionDto {
+  @IsString() remoteIp!: string;
+  @IsInt() @Min(0) @Max(65_535) remotePort!: number;
+  @IsString() state!: string;
+}
+
+/** Raw, real per-container telemetry as sampled by the runtime-agent —
+ * the control plane decides what (if anything) counts as abuse from it,
+ * see `detectContainerRisks` in @clouddeploy/deployment-core. */
+export class ContainerTelemetryDto {
+  @IsString() containerId!: string;
+  @IsNumber() @Min(0) cpuPct!: number;
+  @IsNumber() @Min(0) ramPct!: number;
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => TelemetryProcessDto) processes?: TelemetryProcessDto[];
+  @IsOptional() @IsArray() @ArrayMaxSize(2_000) @ValidateNested({ each: true }) @Type(() => TelemetryConnectionDto) connections?: TelemetryConnectionDto[];
+}
+
 export class ServerHeartbeatDto {
   @IsString() agentVersion!: string;
   @IsNumber() @Min(0) @Max(100) cpuPct!: number;
@@ -41,6 +64,7 @@ export class ServerHeartbeatDto {
   @IsOptional() @IsInt() @Min(0) objectCount?: number;
   @IsOptional() @IsBoolean() replicationHealthy?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(2_000) @ValidateNested({ each: true }) @Type(() => ContainerHeartbeatDto) containers?: ContainerHeartbeatDto[];
+  @IsOptional() @IsArray() @ArrayMaxSize(2_000) @ValidateNested({ each: true }) @Type(() => ContainerTelemetryDto) telemetry?: ContainerTelemetryDto[];
 }
 
 export class ServerActionDto {

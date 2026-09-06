@@ -16,7 +16,7 @@ export class AbuseService {
   }
 
   events(status?: string) {
-    return this.prisma.riskEvent.findMany({ where: status ? { status: status as never } : {}, include: { organization: { select: { id: true, name: true } }, project: { select: { id: true, name: true, status: true } }, service: { select: { id: true, name: true, status: true } } }, orderBy: { createdAt: "desc" }, take: 200 });
+    return this.prisma.riskEvent.findMany({ where: status ? { status: status as never } : {}, include: { organization: { select: { id: true, name: true } }, project: { select: { id: true, name: true, status: true } }, service: { select: { id: true, name: true, status: true } }, container: { select: { id: true, dockerId: true, replicaIndex: true, lastCpuPct: true, lastRamPct: true } } }, orderBy: { createdAt: "desc" }, take: 200 });
   }
 
   createRiskEvent(dto: CreateRiskEventDto) {

@@ -26,7 +26,7 @@ flowchart LR
 - Agency: clients, client-project commercial mapping, portal permissions, and white-label branding isolated by organization.
 - Regional infrastructure: regions, servers, typed nodes, agent heartbeats, commands, capacity, same-region scheduling, and cross-region dependency warnings.
 - Runtime elasticity: policies, cooldown-aware decisions, scaling events, replica reconciliation, and health-only Traefik endpoints.
-- Operations: platform admin, support conversations, abuse reports/risk events, public services/incidents, and platform analytics.
+- Operations: platform admin, support conversations, abuse reports/risk events, public services/incidents, and platform analytics. `apps/runtime-agent` reports real per-container CPU/RAM/process/connection samples on each heartbeat; `detectContainerRisks` (`@clouddeploy/deployment-core`) turns them into deduplicated `RiskEvent` rows for admin review.
 - Developer surface: API-key authentication, plan-aware rate limits, IP restrictions, TypeScript SDK, and CLI.
 - Security: TOTP 2FA, single-use recovery codes, suspicious-login events, session revocation, secret-access audit schema, SSO and enterprise policy schema.
 
@@ -39,8 +39,9 @@ flowchart LR
 5. Only replicas that are `RUNNING` and `healthy` are exported to Traefik.
 6. Destructive abuse and server operations create a reviewed action/audit trail; user sessions are revoked on suspension.
 7. Agent tokens and API keys are returned once and stored only as SHA-256 hashes. Application secrets remain AES-256-GCM encrypted at rest.
+8. Runtime-agents report raw telemetry only; they never decide what counts as abuse. Detection is one deterministic, unit-tested function (`detectContainerRisks`) on the control plane, so the policy is auditable independent of any live container and identical across every node.
 
 ## High-availability target
 
-Run multiple stateless API/web instances behind a load balancer; use PostgreSQL with synchronous standby plus WAL archive, Redis Sentinel or a managed HA tier, replicated object storage, multiple build/runtime nodes per active region, and a highly available container registry. Replace the current in-process API-key limiter with Redis before horizontally scaling the API.
+Run multiple stateless API/web instances behind a load balancer; use PostgreSQL with synchronous standby plus WAL archive, Redis Sentinel or a managed HA tier, replicated object storage, multiple build/runtime nodes per active region, and a highly available container registry. The API-key rate limiter is already Redis-backed and shared across instances (`AnyAuthGuard`); other cross-process coordination (locks, leader election for schedulers) still needs the same review before horizontal scaling.
 

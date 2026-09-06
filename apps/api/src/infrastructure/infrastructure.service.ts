@@ -1,12 +1,20 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import crypto from "node:crypto";
-import { NodeRole, Prisma, ServerCommandType } from "@clouddeploy/database";
+import { NodeRole, Prisma, RiskEventType, RiskSeverity, ServerCommandType } from "@clouddeploy/database";
+import { DetectedRisk, detectContainerRisks } from "@clouddeploy/deployment-core";
 import { PrismaService } from "../prisma/prisma.service";
-import { CompleteServerCommandDto, CreateRegionDto, RegisterServerDto, ServerActionDto, ServerHeartbeatDto } from "./dto/infrastructure.dto";
+import { CompleteServerCommandDto, ContainerTelemetryDto, CreateRegionDto, RegisterServerDto, ServerActionDto, ServerHeartbeatDto } from "./dto/infrastructure.dto";
 import { RoutingService } from "./routing.service";
+
+// A container that keeps breaching the same risk stays OPEN rather than
+// spawning a fresh row every ~15s heartbeat; only once this window has
+// elapsed since the last one does the same containerId+type get a new event.
+const RISK_EVENT_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
 @Injectable()
 export class InfrastructureService {
+  private readonly logger = new Logger("InfrastructureService");
+
   constructor(private readonly prisma: PrismaService, private readonly routing: RoutingService) {}
 
   regions(includeInactive = false) {
@@ -104,7 +112,79 @@ export class InfrastructureService {
       const container = await this.prisma.container.findUnique({ where: { id: item.containerId }, select: { serviceId: true } });
       if (container) await this.routing.syncService(container.serviceId);
     }
+
+    if (dto.telemetry?.length) await this.processTelemetry(dto.telemetry);
+
     return { accepted: true, serverId: server.id, nextHeartbeatSeconds: 30 };
+  }
+
+  /** Turns raw, real per-container telemetry reported by a runtime-agent
+   * into persisted RiskEvent rows, using the same detection policy the API
+   * unit-tests independently (`detectContainerRisks`). Runs outside the
+   * heartbeat's own transaction — a slow or failing risk write should never
+   * fail the heartbeat itself, since the container health update already
+   * committed. */
+  private async processTelemetry(telemetry: ContainerTelemetryDto[]): Promise<void> {
+    for (const sample of telemetry) {
+      const container = await this.prisma.container.findUnique({
+        where: { id: sample.containerId },
+        include: { service: { include: { project: true } } },
+      });
+      if (!container) continue;
+
+      await this.prisma.container.update({
+        where: { id: container.id },
+        data: { lastCpuPct: sample.cpuPct, lastRamPct: sample.ramPct, lastMetricAt: new Date() },
+      });
+
+      const risks = detectContainerRisks({
+        containerId: container.id,
+        cpuPct: sample.cpuPct,
+        ramPct: sample.ramPct,
+        processes: sample.processes ?? [],
+        connections: sample.connections ?? [],
+      });
+
+      for (const risk of risks) {
+        await this.recordRiskEvent(risk, {
+          containerId: container.id,
+          serviceId: container.serviceId,
+          projectId: container.service.projectId,
+          organizationId: container.service.project.organizationId,
+        });
+      }
+    }
+  }
+
+  private async recordRiskEvent(
+    risk: DetectedRisk,
+    target: { containerId: string; serviceId: string; projectId: string; organizationId: string },
+  ): Promise<void> {
+    const recent = await this.prisma.riskEvent.findFirst({
+      where: {
+        containerId: target.containerId,
+        type: risk.type as RiskEventType,
+        status: { in: ["OPEN", "REVIEWING"] },
+        createdAt: { gte: new Date(Date.now() - RISK_EVENT_DEDUP_WINDOW_MS) },
+      },
+      select: { id: true },
+    });
+    if (recent) return;
+
+    await this.prisma.riskEvent.create({
+      data: {
+        organizationId: target.organizationId,
+        projectId: target.projectId,
+        serviceId: target.serviceId,
+        containerId: target.containerId,
+        type: risk.type as RiskEventType,
+        severity: risk.severity as RiskSeverity,
+        title: risk.title,
+        evidence: risk.evidence as Prisma.InputJsonValue,
+        recommendedActions: risk.recommendedActions,
+      },
+    });
+    this.logger.warn(`Risk event ${risk.type} recorded for container ${target.containerId}: ${risk.title}`);
   }
 
   async pollCommands(token: string | undefined) {

@@ -55,11 +55,6 @@ export default function DatabasesPage() {
                     </button>
                   ))}
                 </div>
-                {engine !== "POSTGRESQL" && (
-                  <p className="text-xs text-muted-foreground">
-                    MySQL/MariaDB provisioning is simulated until a MySQL server is wired into the local infra stack — PostgreSQL is fully real (table browser, SQL editor, backups).
-                  </p>
-                )}
               </div>
             </div>
             <DialogFooter>

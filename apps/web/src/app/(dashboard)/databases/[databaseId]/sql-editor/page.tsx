@@ -9,14 +9,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useRunQuery, useSavedQueries, useSaveQuery, useDeleteSavedQuery, type QueryResult } from "@/hooks/use-database-manager";
+import { useDatabase } from "@/hooks/use-databases";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false, loading: () => <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Loading editor...</div> });
 
-const DEFAULT_SQL = "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 10;";
+/** MySQL/MariaDB have no "public" schema the way Postgres does — a tenant's
+ * database IS its own schema there, so filtering by it needs no literal at
+ * all, just the tables already visible on this connection. */
+function defaultSqlFor(engine: string | undefined): string {
+  if (engine === "MYSQL" || engine === "MARIADB") return "SELECT table_name, table_rows FROM information_schema.tables LIMIT 10;";
+  return "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 10;";
+}
 
 export default function SqlEditorPage() {
   const params = useParams<{ databaseId: string }>();
-  const [sql, setSql] = useState(DEFAULT_SQL);
+  const { data: database } = useDatabase(params.databaseId);
+  const [sql, setSql] = useState<string | null>(null);
+  const editorValue = sql ?? defaultSqlFor(database?.engine);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -29,7 +38,7 @@ export default function SqlEditorPage() {
 
   const handleRun = () => {
     setError(null);
-    runQuery.mutate(sql, {
+    runQuery.mutate(editorValue, {
       onSuccess: (data) => setResult(data),
       onError: (err: any) => setError(err?.message ?? "Query failed"),
     });
@@ -57,7 +66,7 @@ export default function SqlEditorPage() {
             <MonacoEditor
               language="sql"
               theme="vs-dark"
-              value={sql}
+              value={editorValue}
               onChange={(v) => setSql(v ?? "")}
               options={{ minimap: { enabled: false }, fontSize: 13, padding: { top: 12 } }}
             />
@@ -138,7 +147,7 @@ export default function SqlEditorPage() {
               disabled={!queryName}
               loading={saveQuery.isPending}
               onClick={() =>
-                saveQuery.mutate({ name: queryName, sql }, { onSuccess: () => { setSaveOpen(false); setQueryName(""); } })
+                saveQuery.mutate({ name: queryName, sql: editorValue }, { onSuccess: () => { setSaveOpen(false); setQueryName(""); } })
               }
             >
               Save

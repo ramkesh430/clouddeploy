@@ -8,6 +8,7 @@ import { RESOURCE_PRESETS } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateDatabaseDto } from "./dto/create-database.dto";
 import { PostgresAdminService } from "./postgres-admin.service";
+import { MysqlAdminService } from "./mysql-admin.service";
 import { PostgresBackupService } from "./postgres-backup.service";
 import { WebhooksService } from "../webhooks/webhooks.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -33,6 +34,7 @@ export class DatabasesService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly postgresAdmin: PostgresAdminService,
+    private readonly mysqlAdmin: MysqlAdminService,
     private readonly postgresBackup: PostgresBackupService,
     private readonly webhooks: WebhooksService,
     private readonly notifications: NotificationsService,
@@ -121,28 +123,23 @@ export class DatabasesService {
       },
     });
 
-    if (dto.engine === "POSTGRESQL") {
-      // Real provisioning: a logically-isolated database + role on the
-      // shared Postgres server (see PostgresAdminService for why this is
-      // the right MVP fidelity level).
-      this.postgresAdmin
-        .createTenantDatabase(databaseName, username, password)
-        .then(async () => {
-          await this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } });
-          await this.scheduleAutomaticBackups(database.id, database.backupFrequency);
-        })
-        .catch(async (err) => {
-          this.logger.error(`Failed to provision Postgres database "${databaseName}": ${err.message}`);
-          await this.prisma.database.update({ where: { id: database.id }, data: { status: "FAILED" } });
-        });
-    } else {
-      // MySQL/MariaDB provisioning requires a MySQL server in the local
-      // infra stack, which isn't wired up yet — simulated until then.
-      setTimeout(async () => {
-        await this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } }).catch(() => undefined);
+    // Real provisioning either way: a logically-isolated database + user on
+    // the shared server for the chosen engine (see PostgresAdminService and
+    // MysqlAdminService for why one-server-many-databases is the right MVP
+    // fidelity level). MariaDB shares MySQL's admin path — mysql2 speaks
+    // MariaDB's wire protocol too.
+    const provision = dto.engine === "POSTGRESQL"
+      ? this.postgresAdmin.createTenantDatabase(databaseName, username, password)
+      : this.mysqlAdmin.createTenantDatabase(databaseName, username, password);
+    provision
+      .then(async () => {
+        await this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } });
         await this.scheduleAutomaticBackups(database.id, database.backupFrequency);
-      }, 3000);
-    }
+      })
+      .catch(async (err) => {
+        this.logger.error(`Failed to provision ${dto.engine} database "${databaseName}": ${err.message}`);
+        await this.prisma.database.update({ where: { id: database.id }, data: { status: "FAILED" } });
+      });
 
     await this.usage.record(dto.organizationId, "database_created", 1, "count");
 
@@ -177,8 +174,9 @@ export class DatabasesService {
     const database = await this.assertExists(databaseId);
     const newPassword = crypto.randomBytes(18).toString("base64url");
 
-    if (database.engine === "POSTGRESQL" && database.status === "RUNNING") {
-      await this.postgresAdmin.rotateTenantPassword(database.username, newPassword);
+    if (database.status === "RUNNING") {
+      if (database.engine === "POSTGRESQL") await this.postgresAdmin.rotateTenantPassword(database.username, newPassword);
+      else await this.mysqlAdmin.rotateTenantPassword(database.username, newPassword);
     }
 
     await this.prisma.database.update({
@@ -300,15 +298,17 @@ export class DatabasesService {
     return { restoring: true, fromBackup: backupId };
   }
 
-  /** Soft delete — real infra (Postgres role/database) is dropped immediately
-   * since it holds no independent value once detached from the platform. */
+  /** Soft delete — real infra (the tenant's database/role or database/user)
+   * is dropped immediately since it holds no independent value once
+   * detached from the platform. */
   async remove(databaseId: string) {
     const database = await this.assertExists(databaseId);
-    if (database.engine === "POSTGRESQL") {
-      await this.postgresAdmin.dropTenantDatabase(database.databaseName, database.username).catch((err) => {
-        this.logger.error(`Failed to drop Postgres database "${database.databaseName}": ${err.message}`);
-      });
-    }
+    const drop = database.engine === "POSTGRESQL"
+      ? this.postgresAdmin.dropTenantDatabase(database.databaseName, database.username)
+      : this.mysqlAdmin.dropTenantDatabase(database.databaseName, database.username);
+    await drop.catch((err) => {
+      this.logger.error(`Failed to drop ${database.engine} database "${database.databaseName}": ${err.message}`);
+    });
     await this.unscheduleAutomaticBackups(databaseId);
     await this.prisma.database.update({ where: { id: databaseId }, data: { deletedAt: new Date() } });
     return { removed: true };

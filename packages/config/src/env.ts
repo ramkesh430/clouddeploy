@@ -11,6 +11,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
 
   DATABASE_URL: z.string().min(1),
+  MYSQL_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1),
 
   JWT_SECRET: z.string().min(32),

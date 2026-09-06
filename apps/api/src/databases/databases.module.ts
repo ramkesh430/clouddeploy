@@ -4,6 +4,7 @@ import { DatabasesController } from "./databases.controller";
 import { DatabasesService, DATABASE_BACKUPS_QUEUE } from "./databases.service";
 import { DatabaseManagerService } from "./database-manager.service";
 import { PostgresAdminService } from "./postgres-admin.service";
+import { MysqlAdminService } from "./mysql-admin.service";
 import { PostgresBackupService } from "./postgres-backup.service";
 import { DatabaseBackupProcessor } from "./database-backup.processor";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -25,6 +26,7 @@ import { ActivityLogModule } from "../activity-log/activity-log.module";
     DatabasesService,
     DatabaseManagerService,
     PostgresAdminService,
+    MysqlAdminService,
     PostgresBackupService,
     DatabaseBackupProcessor,
     RolesGuard,

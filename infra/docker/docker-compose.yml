@@ -18,6 +18,22 @@ services:
       timeout: 5s
       retries: 10
 
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: clouddeploy
+      MYSQL_DATABASE: clouddeploy
+    ports:
+      - "${MYSQL_PORT:-3308}:3306"
+    volumes:
+      - clouddeploy_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pclouddeploy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -130,6 +146,7 @@ services:
 
 volumes:
   clouddeploy_postgres_data:
+  clouddeploy_mysql_data:
   clouddeploy_redis_data:
   clouddeploy_minio_data:
   clouddeploy_registry_data:

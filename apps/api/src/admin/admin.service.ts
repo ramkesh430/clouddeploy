@@ -3,6 +3,7 @@ import { Prisma } from "@clouddeploy/database";
 import { hashPassword } from "@clouddeploy/security";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  ActivateSubscriptionDto,
   CreateAdminDomainDto,
   CreateAdminProjectDto,
   CreateAdminUserDto,
@@ -452,5 +453,51 @@ export class AdminService {
     });
     await this.audit(currentUserId, "subscription.update", "Subscription", subscriptionId, dto, { planId: subscription.planId, status: subscription.status });
     return updated;
+  }
+
+  /** Assigns or changes an organization's plan directly — bypassing Stripe
+   * entirely. This is the platform's real path to "give this org a plan"
+   * when checkout itself isn't usable (no Stripe price configured for a
+   * tier, an off-platform/invoiced deal, a support comp, migrated data),
+   * and it's the only way to grant a plan to an organization that has
+   * never gone through checkout and so has no Subscription row at all —
+   * updateSubscription() above requires one to already exist. Creates one
+   * with no Stripe IDs attached (there's no real Stripe object backing a
+   * manual grant) and marks it ACTIVE by default, not TRIALING, since an
+   * admin choosing to grant a plan means it's actually in effect now. */
+  async activateSubscription(dto: ActivateSubscriptionDto, currentUserId: string) {
+    const [organization, plan] = await Promise.all([
+      this.prisma.organization.findUnique({ where: { id: dto.organizationId } }),
+      this.prisma.plan.findUnique({ where: { id: dto.planId } }),
+    ]);
+    if (!organization || organization.deletedAt) throw new NotFoundException("Organization not found");
+    if (!plan) throw new NotFoundException("Plan not found");
+
+    const billingPeriod = dto.billingPeriod === "yearly" ? "yearly" : "monthly";
+    const now = new Date();
+    const periodEnd = new Date(now);
+    if (billingPeriod === "yearly") periodEnd.setUTCFullYear(periodEnd.getUTCFullYear() + 1);
+    else periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
+
+    const existing = await this.prisma.subscription.findUnique({ where: { organizationId: dto.organizationId } });
+    const data = {
+      planId: dto.planId,
+      billingPeriod,
+      status: dto.status ?? "ACTIVE",
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    } as const;
+
+    const subscription = existing
+      ? await this.prisma.subscription.update({ where: { organizationId: dto.organizationId }, data, include: { organization: { select: { name: true } }, plan: true } })
+      : await this.prisma.subscription.create({ data: { organizationId: dto.organizationId, ...data }, include: { organization: { select: { name: true } }, plan: true } });
+
+    await this.audit(currentUserId, existing ? "subscription.manual_change" : "subscription.manual_activate", "Subscription", subscription.id, {
+      organizationId: dto.organizationId,
+      planId: dto.planId,
+      billingPeriod,
+    });
+    return subscription;
   }
 }

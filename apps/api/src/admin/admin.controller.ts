@@ -9,6 +9,7 @@ import { EncryptionRotationService } from "../security-settings/encryption-rotat
 import { AuthService } from "../auth/auth.service";
 import { withDefault } from "../common/utils/pagination.util";
 import {
+  ActivateSubscriptionDto,
   CreateAdminDomainDto,
   CreateAdminProjectDto,
   CreateAdminUserDto,
@@ -68,6 +69,7 @@ export class AdminController {
   @Patch("plans/:planId") updatePlan(@Param("planId") planId: string, @Body() dto: UpdatePlanDto, @CurrentUser() user: RequestUser) { return this.admin.updatePlan(planId, dto, user.id); }
   @Delete("plans/:planId") deletePlan(@Param("planId") planId: string, @CurrentUser() user: RequestUser) { return this.admin.deletePlan(planId, user.id); }
   @Get("subscriptions") subscriptions(@Query("limit") limit?: number) { return this.admin.subscriptions(withDefault(limit, 100)); }
+  @Post("subscriptions") activateSubscription(@Body() dto: ActivateSubscriptionDto, @CurrentUser() user: RequestUser) { return this.admin.activateSubscription(dto, user.id); }
   @Patch("subscriptions/:subscriptionId") updateSubscription(@Param("subscriptionId") subscriptionId: string, @Body() dto: UpdateSubscriptionDto, @CurrentUser() user: RequestUser) { return this.admin.updateSubscription(subscriptionId, dto, user.id); }
   @Get("transactions") transactions(@Query("limit") limit?: number) { return this.admin.transactions(withDefault(limit, 50)); }
   @Get("usage") usage(@Query("limit") limit?: number) { return this.admin.usage(withDefault(limit, 100)); }

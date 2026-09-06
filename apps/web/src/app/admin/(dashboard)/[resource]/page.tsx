@@ -110,6 +110,12 @@ const resources: Record<string, ResourceConfig> = {
     "/admin/subscriptions",
     [["organization.name", "Organization"], ["plan.name", "Plan"], ["status", "Status"], ["billingPeriod", "Period"], ["currentPeriodEnd", "Renews"], ["cancelAtPeriodEnd", "Cancels"]],
     {
+      createFields: [
+        { key: "organizationId", label: "Organization", type: "select", required: true, dynamicSource: "organizations" },
+        { key: "planId", label: "Plan", type: "select", required: true, dynamicSource: "plans" },
+        { key: "billingPeriod", label: "Billing period", type: "select", options: enumOptions(["monthly", "yearly"]) },
+        { key: "status", label: "Status", type: "select", options: enumOptions(["ACTIVE", "TRIALING", "PAST_DUE", "CANCELED", "INCOMPLETE"]) },
+      ],
       editFields: [
         { key: "planId", label: "Plan", type: "select", dynamicSource: "plans" },
         { key: "status", label: "Status", type: "select", options: enumOptions(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"]) },

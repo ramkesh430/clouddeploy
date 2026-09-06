@@ -75,3 +75,10 @@ export class UpdateSubscriptionDto {
   @IsOptional() @IsString() planId?: string;
   @IsOptional() @IsEnum(SubscriptionStatus) status?: SubscriptionStatus;
 }
+
+export class ActivateSubscriptionDto {
+  @IsString() organizationId!: string;
+  @IsString() planId!: string;
+  @IsOptional() @IsString() billingPeriod?: string;
+  @IsOptional() @IsEnum(SubscriptionStatus) status?: SubscriptionStatus;
+}

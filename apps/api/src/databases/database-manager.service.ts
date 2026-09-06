@@ -43,7 +43,12 @@ class PgTenantConnection implements TenantConnection {
   constructor(private readonly pool: PgPool) {}
   async query(sql: string, params: unknown[] = []) {
     const res = await this.pool.query(sql, params);
-    return { columns: (res.fields ?? []).map((f) => f.name), rows: res.rows, rowCount: res.rowCount ?? res.rows.length };
+    // pg returns an ARRAY of full result objects — one per statement — when
+    // the query text contains more than one semicolon-separated statement.
+    // The SQL editor only ever wants the last statement's result, matching
+    // psql/most GUI clients' "show me what the final statement produced".
+    const last: { fields?: { name: string }[]; rows: Record<string, unknown>[]; rowCount?: number | null } = Array.isArray(res) ? res[res.length - 1] : res;
+    return { columns: (last.fields ?? []).map((f) => f.name), rows: last.rows, rowCount: last.rowCount ?? last.rows.length };
   }
   async end() {
     await this.pool.end();
@@ -57,12 +62,41 @@ class MysqlTenantConnection implements TenantConnection {
   ) {}
   async query(sql: string, params: unknown[] = []) {
     const [result, fields] = await this.pool.query(sql, params);
+    return this.toQueryResult(result, fields);
+  }
+
+  /** mysql2 returns a flat RowDataPacket[] for a single SELECT, a single
+   * ResultSetHeader for a single non-SELECT statement, and — since the pool
+   * is opened with `multipleStatements: true` — an array with one entry per
+   * statement (each itself either a RowDataPacket[] or a ResultSetHeader)
+   * for semicolon-separated scripts. Recursing into the last entry mirrors
+   * PgTenantConnection's "last statement wins" behavior above. */
+  private toQueryResult(result: unknown, fields: unknown): { columns: string[]; rows: Record<string, unknown>[]; rowCount: number } {
+    if (this.isMultiStatementResult(result)) {
+      const results = result as unknown[];
+      const fieldSets = Array.isArray(fields) ? (fields as unknown[]) : [];
+      return this.toQueryResult(results[results.length - 1], fieldSets[fieldSets.length - 1]);
+    }
     if (Array.isArray(result)) {
-      return { columns: (fields ?? []).map((f) => f.name), rows: result as RowDataPacket[] as Record<string, unknown>[], rowCount: result.length };
+      return { columns: ((fields as { name: string }[] | undefined) ?? []).map((f) => f.name), rows: result as RowDataPacket[] as Record<string, unknown>[], rowCount: result.length };
     }
     const header = result as ResultSetHeader;
-    return { columns: [], rows: [], rowCount: header.affectedRows ?? 0 };
+    return { columns: [], rows: [], rowCount: header?.affectedRows ?? 0 };
   }
+
+  /** A single SELECT's result is a flat array of row objects. A
+   * multi-statement result is an array where every entry is itself either
+   * a row array (that statement was a SELECT) or a ResultSetHeader (it
+   * wasn't) — never a bare row object at the top level — which is what
+   * distinguishes the two shapes here. */
+  private isMultiStatementResult(result: unknown): result is unknown[] {
+    return (
+      Array.isArray(result) &&
+      result.length > 0 &&
+      result.every((entry) => Array.isArray(entry) || (entry !== null && typeof entry === "object" && "affectedRows" in entry))
+    );
+  }
+
   async end() {
     await this.pool.end();
   }

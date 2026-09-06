@@ -120,7 +120,10 @@ export class MysqlAdminService {
   }
 
   /** Opens a short-lived pool authenticated AS the tenant's own user,
-   * scoped to their own database. */
+   * scoped to their own database. `multipleStatements` is on because the
+   * SQL editor accepts real multi-statement scripts (schema dumps, seed
+   * files) the same way the Postgres path already does — mysql2 refuses
+   * semicolon-separated text otherwise. */
   createTenantPool(databaseName: string, username: string, password: string): Pool {
     assertSafeIdentifier(databaseName, "database name");
     assertSafeIdentifier(username, "user name");
@@ -133,6 +136,7 @@ export class MysqlAdminService {
       database: databaseName,
       connectionLimit: 3,
       connectTimeout: 15_000,
+      multipleStatements: true,
     });
   }
 }

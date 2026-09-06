@@ -41,3 +41,22 @@ export function useOrganizationMembers(organizationId: string | null) {
     enabled: !!organizationId,
   });
 }
+
+export interface ActivityLogEntry {
+  id: string;
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  status: string;
+  createdAt: string;
+  user: { fullName: string | null; email: string } | null;
+  project: { name: string; slug: string } | null;
+}
+
+export function useActivityLog(organizationId: string | null) {
+  return useQuery({
+    queryKey: ["activity-log", organizationId],
+    queryFn: () => api.get<ActivityLogEntry[]>(`/organizations/${organizationId}/activity-logs`),
+    enabled: !!organizationId,
+  });
+}

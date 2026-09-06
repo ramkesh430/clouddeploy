@@ -156,7 +156,7 @@ export class AuthService {
       },
     });
     if (!user) throw new UnauthorizedException("Account is not active");
-    return { ...this.toPublicUser(user), isPlatformAdmin: user.isPlatformAdmin, organizations: user.organizationMembers.map((membership) => ({ ...membership.organization, role: membership.role })) };
+    return { ...this.toPublicUser(user), organizations: user.organizationMembers.map((membership) => ({ ...membership.organization, role: membership.role })) };
   }
 
   async verifyEmail(token: string) {
@@ -273,7 +273,7 @@ export class AuthService {
     await this.prisma.notification.createMany({ data: memberships.map((membership) => ({ organizationId: membership.organizationId, userId, type: "SUSPICIOUS_LOGIN" as const, title: "New sign-in location", message: `A sign-in from ${ipAddress ?? "an unknown IP address"} was detected. Review active sessions if this was not you.` })) });
   }
 
-  private toPublicUser(user: { id: string; email: string; fullName: string; avatarUrl: string | null; emailVerifiedAt: Date | null; twoFactorEnabled?: boolean }) {
+  private toPublicUser(user: { id: string; email: string; fullName: string; avatarUrl: string | null; emailVerifiedAt: Date | null; twoFactorEnabled?: boolean; isPlatformAdmin?: boolean }) {
     return {
       id: user.id,
       email: user.email,
@@ -281,6 +281,7 @@ export class AuthService {
       avatarUrl: user.avatarUrl,
       emailVerified: !!user.emailVerifiedAt,
       twoFactorEnabled: !!user.twoFactorEnabled,
+      isPlatformAdmin: !!user.isPlatformAdmin,
     };
   }
 }

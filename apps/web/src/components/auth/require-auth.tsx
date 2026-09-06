@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/store/auth-store";
 
-export function RequireAuth({ children }: { children: React.ReactNode }) {
+export function RequireAuth({ children, redirectTo = "/login" }: { children: React.ReactNode; redirectTo?: string }) {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
   // Starts false unconditionally so the very first render — including the
@@ -23,9 +23,9 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (hasHydrated && !accessToken) {
-      router.replace("/login");
+      router.replace(redirectTo);
     }
-  }, [hasHydrated, accessToken, router]);
+  }, [hasHydrated, accessToken, router, redirectTo]);
 
   if (!hasHydrated || !accessToken) {
     return (

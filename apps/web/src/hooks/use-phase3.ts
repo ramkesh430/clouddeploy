@@ -31,4 +31,4 @@ export function useSecurityOverview() { return useQuery({ queryKey: ["security-o
 export function useTwoFactorSetup() { return useMutation({ mutationFn: () => api.post<{ secret: string; otpauthUrl: string }>("/security/2fa/setup") }); }
 export function useTwoFactorEnable() { const client = useQueryClient(); return useMutation({ mutationFn: (code: string) => api.post<{ enabled: boolean; recoveryCodes: string[] }>("/security/2fa/enable", { code }), onSuccess: () => client.invalidateQueries({ queryKey: ["security-overview"] }) }); }
 
-export function useAdminResource<T = unknown>(path: string) { return useQuery({ queryKey: ["admin", path], queryFn: () => api.get<T>(path), refetchInterval: path.includes("dashboard") || path.includes("infrastructure") ? 15_000 : false }); }
+export function useAdminResource<T = unknown>(path: string, options?: { enabled?: boolean }) { return useQuery({ queryKey: ["admin", path], queryFn: () => api.get<T>(path), refetchInterval: path.includes("dashboard") || path.includes("infrastructure") ? 15_000 : false, enabled: options?.enabled ?? true }); }

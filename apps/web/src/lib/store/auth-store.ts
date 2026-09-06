@@ -7,6 +7,7 @@ export interface AuthUser {
   fullName: string;
   avatarUrl: string | null;
   emailVerified: boolean;
+  isPlatformAdmin: boolean;
 }
 
 interface AuthState {

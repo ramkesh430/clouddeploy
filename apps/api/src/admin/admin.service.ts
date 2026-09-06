@@ -1,6 +1,43 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@clouddeploy/database";
+import { hashPassword } from "@clouddeploy/security";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  CreateAdminDomainDto,
+  CreateAdminProjectDto,
+  CreateAdminUserDto,
+  CreateOrganizationDto,
+  CreatePlanDto,
+  UpdateAdminDomainDto,
+  UpdateAdminProjectDto,
+  UpdateAdminUserDto,
+  UpdateOrganizationDto,
+  UpdatePlanDto,
+} from "./dto/admin-crud.dto";
+
+/** Prisma's unique-constraint violation code — surfaced as a friendly 409
+ * instead of a raw 500 whenever an admin-entered slug/email/hostname/tier
+ * collides with an existing row. */
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
+
+/** Every admin mutation that returns a User row uses this — never the bare
+ * Prisma row, which would leak passwordHash and twoFactorSecret straight
+ * into the API response. */
+const SAFE_USER_SELECT = {
+  id: true,
+  email: true,
+  fullName: true,
+  avatarUrl: true,
+  isPlatformAdmin: true,
+  isSuspended: true,
+  suspendedReason: true,
+  twoFactorEnabled: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 @Injectable()
 export class AdminService {
@@ -183,8 +220,140 @@ export class AdminService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException("User not found");
     await this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
-    return this.prisma.user.update({ where: { id: userId }, data: { isSuspended: true, suspendedReason: reason } });
+    return this.prisma.user.update({ where: { id: userId }, data: { isSuspended: true, suspendedReason: reason }, select: SAFE_USER_SELECT });
   }
 
-  resumeUser(userId: string) { return this.prisma.user.update({ where: { id: userId }, data: { isSuspended: false, suspendedReason: null } }); }
+  resumeUser(userId: string) { return this.prisma.user.update({ where: { id: userId }, data: { isSuspended: false, suspendedReason: null }, select: SAFE_USER_SELECT }); }
+
+  async createUser(dto: CreateAdminUserDto) {
+    const passwordHash = await hashPassword(dto.password);
+    try {
+      // Admin-provisioned accounts are pre-verified — there's no signup
+      // flow here to send a verification email through.
+      return await this.prisma.user.create({
+        data: { fullName: dto.fullName, email: dto.email.toLowerCase(), passwordHash, isPlatformAdmin: !!dto.isPlatformAdmin, emailVerifiedAt: new Date() },
+        select: SAFE_USER_SELECT,
+      });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("A user with this email already exists");
+      throw err;
+    }
+  }
+
+  async updateUser(userId: string, dto: UpdateAdminUserDto, currentUserId: string) {
+    if (userId === currentUserId && dto.isPlatformAdmin === false) {
+      throw new ForbiddenException("You cannot remove your own platform administrator access");
+    }
+    try {
+      return await this.prisma.user.update({
+        where: { id: userId },
+        data: { ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}), ...(dto.email !== undefined ? { email: dto.email.toLowerCase() } : {}), ...(dto.isPlatformAdmin !== undefined ? { isPlatformAdmin: dto.isPlatformAdmin } : {}) },
+        select: SAFE_USER_SELECT,
+      });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("A user with this email already exists");
+      throw err;
+    }
+  }
+
+  async deleteUser(userId: string, currentUserId: string) {
+    if (userId === currentUserId) throw new ForbiddenException("You cannot delete your own account");
+    await this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    return this.prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() }, select: SAFE_USER_SELECT });
+  }
+
+  async createOrganization(dto: CreateOrganizationDto) {
+    try {
+      return await this.prisma.organization.create({ data: { name: dto.name, slug: dto.slug, isAgency: !!dto.isAgency } });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("An organization with this slug already exists");
+      throw err;
+    }
+  }
+
+  async updateOrganization(organizationId: string, dto: UpdateOrganizationDto) {
+    try {
+      return await this.prisma.organization.update({ where: { id: organizationId }, data: dto });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("An organization with this slug already exists");
+      throw err;
+    }
+  }
+
+  deleteOrganization(organizationId: string) {
+    return this.prisma.organization.update({ where: { id: organizationId }, data: { deletedAt: new Date() } });
+  }
+
+  async createProject(dto: CreateAdminProjectDto) {
+    const organization = await this.prisma.organization.findUnique({ where: { id: dto.organizationId } });
+    if (!organization || organization.deletedAt) throw new NotFoundException("Organization not found");
+    try {
+      return await this.prisma.project.create({ data: { organizationId: dto.organizationId, name: dto.name, slug: dto.slug, region: dto.region ?? "us-east" } });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("This organization already has a project with that slug");
+      throw err;
+    }
+  }
+
+  updateProject(projectId: string, dto: UpdateAdminProjectDto) {
+    return this.prisma.project.update({ where: { id: projectId }, data: dto });
+  }
+
+  deleteProject(projectId: string) {
+    return this.prisma.project.update({ where: { id: projectId }, data: { deletedAt: new Date(), status: "ARCHIVED" } });
+  }
+
+  async createPlan(dto: CreatePlanDto) {
+    try {
+      return await this.prisma.plan.create({
+        data: {
+          tier: dto.tier,
+          name: dto.name,
+          priceMonthlyCents: dto.priceMonthlyCents,
+          priceYearlyCents: dto.priceYearlyCents,
+          maxProjects: dto.maxProjects,
+          maxRamMb: dto.maxRamMb,
+          features: (dto.features ?? {}) as Prisma.InputJsonValue,
+        },
+      });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("A plan for this tier already exists");
+      throw err;
+    }
+  }
+
+  updatePlan(planId: string, dto: UpdatePlanDto) {
+    const { features, ...rest } = dto;
+    return this.prisma.plan.update({
+      where: { id: planId },
+      data: { ...rest, ...(features !== undefined ? { features: features as Prisma.InputJsonValue } : {}) },
+    });
+  }
+
+  async deletePlan(planId: string) {
+    const activeSubscriptions = await this.prisma.subscription.count({ where: { planId, status: { in: ["ACTIVE", "TRIALING"] } } });
+    if (activeSubscriptions > 0) throw new BadRequestException(`Cannot delete a plan with ${activeSubscriptions} active subscription(s)`);
+    return this.prisma.plan.delete({ where: { id: planId } });
+  }
+
+  async createDomain(dto: CreateAdminDomainDto) {
+    const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
+    if (!project || project.deletedAt || project.organizationId !== dto.organizationId) throw new NotFoundException("Project not found for this organization");
+    try {
+      return await this.prisma.domain.create({
+        data: { organizationId: dto.organizationId, projectId: dto.projectId, hostname: dto.hostname.toLowerCase(), type: dto.type ?? "CUSTOM", environment: dto.environment ?? "PRODUCTION", dnsRecords: {} },
+      });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) throw new ConflictException("This hostname is already registered");
+      throw err;
+    }
+  }
+
+  updateDomain(domainId: string, dto: UpdateAdminDomainDto) {
+    return this.prisma.domain.update({ where: { id: domainId }, data: { ...dto, ...(dto.status === "ACTIVE" ? { verifiedAt: new Date() } : {}) } });
+  }
+
+  deleteDomain(domainId: string) {
+    return this.prisma.domain.update({ where: { id: domainId }, data: { deletedAt: new Date() } });
+  }
 }

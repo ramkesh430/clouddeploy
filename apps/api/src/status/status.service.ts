@@ -79,6 +79,17 @@ export class StatusService {
     return update;
   }
 
+  async deleteIncident(incidentId: string) {
+    const incident = await this.prisma.incident.findUnique({ where: { id: incidentId }, include: { services: true } });
+    if (!incident) throw new NotFoundException("Incident not found");
+    // Cascades to its IncidentService/IncidentUpdate rows via the schema's
+    // onDelete: Cascade — only needed for correcting a mistakenly published
+    // incident, so history isn't meant to accumulate deletions in practice.
+    await this.prisma.incident.delete({ where: { id: incidentId } });
+    for (const relation of incident.services) await this.recomputeServiceStatus(relation.serviceId);
+    return { deleted: true };
+  }
+
   private async recomputeServiceStatus(serviceId: string) {
     const active = await this.prisma.incidentService.findMany({ where: { serviceId, incident: { status: { not: "RESOLVED" } } }, include: { incident: true } });
     const status = active.length ? this.worstStatus(active.map((item) => this.statusForSeverity(item.incident.severity))) : "OPERATIONAL";

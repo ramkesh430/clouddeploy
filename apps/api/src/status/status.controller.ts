@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser, RequestUser } from "../common/decorators/current-user.decorator";
@@ -24,4 +24,5 @@ export class AdminStatusController {
   @Get("incidents") incidents() { return this.status.incidents(); }
   @Post("incidents") create(@Body() dto: CreateIncidentDto, @CurrentUser() user: RequestUser) { return this.status.createIncident(dto, user.id); }
   @Post("incidents/:incidentId/updates") update(@Param("incidentId") incidentId: string, @Body() dto: IncidentUpdateDto, @CurrentUser() user: RequestUser) { return this.status.addUpdate(incidentId, dto, user.id); }
+  @Delete("incidents/:incidentId") remove(@Param("incidentId") incidentId: string) { return this.status.deleteIncident(incidentId); }
 }

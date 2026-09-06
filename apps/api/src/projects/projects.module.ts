@@ -5,9 +5,10 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsageModule } from "../usage/usage.module";
+import { InfrastructureModule } from "../infrastructure/infrastructure.module";
 
 @Module({
-  imports: [UsageModule],
+  imports: [UsageModule, InfrastructureModule],
   controllers: [ProjectsController],
   providers: [ProjectsService, RolesGuard, AnyAuthGuard, JwtAuthGuard],
   exports: [ProjectsService],

@@ -3,12 +3,14 @@ import { PrismaService } from "../prisma/prisma.service";
 import { UsageService } from "../usage/usage.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
+import { ContainerRuntimeService } from "../infrastructure/container-runtime.service";
 
 @Injectable()
 export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usage: UsageService,
+    private readonly containerRuntime: ContainerRuntimeService,
   ) {}
 
   /**
@@ -118,7 +120,21 @@ export class ProjectsService {
   /** Soft delete — per spec, critical infrastructure is never hard-deleted without confirmation. */
   async remove(projectId: string) {
     await this.assertExists(projectId);
+    await this.stopRealContainers(projectId);
     return this.prisma.project.update({ where: { id: projectId }, data: { deletedAt: new Date() } });
+  }
+
+  /** Stops any real Docker containers (and their public tunnels) running
+   * for this project's services, so deleting it doesn't leak a running
+   * container. A no-op for projects that were never really deployed. */
+  private async stopRealContainers(projectId: string) {
+    const containers = await this.prisma.container.findMany({
+      where: { status: { not: "REMOVED" }, dockerId: { not: null }, service: { projectId } },
+    });
+    for (const container of containers) {
+      await this.containerRuntime.stopContainer(container.dockerId, container.tunnelPid);
+      await this.prisma.container.update({ where: { id: container.id }, data: { status: "REMOVED", healthy: false, stoppedAt: new Date() } });
+    }
   }
 
   async listMembers(projectId: string) {

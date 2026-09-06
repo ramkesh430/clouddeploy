@@ -8,15 +8,23 @@ import { DEPLOYMENTS_QUEUE } from "./deployments.service";
 import { WebhooksService } from "../webhooks/webhooks.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { SchedulerService } from "../infrastructure/scheduler.service";
+import { ContainerRuntimeService } from "../infrastructure/container-runtime.service";
+import { GitCloneService } from "./git-clone.service";
+import { ImageBuildService } from "./image-build.service";
 
 const STEP_DELAY_MS = 900;
 
 /**
- * Executes the deployment pipeline. This is the local simulation adapter
- * described in section 141 of the spec: it drives the same named steps,
- * statuses, and log stream the real build-worker/runtime-agent will use
- * once Docker BuildKit + Traefik orchestration lands, so the frontend and
- * API contract never have to change when that swap happens.
+ * Executes the deployment pipeline. For a project with a connected
+ * repository and only Node/Bun/Docker-runtime services, this now does real
+ * work — a real `git clone` (GitCloneService), a real `docker build`
+ * (ImageBuildService), and a real `docker run` + public tunnel
+ * (ContainerRuntimeService, invoked from SchedulerService.
+ * reconcileServiceReplicas once a service has a built `imageTag`). Every
+ * other project (no connected repo, or a not-yet-supported runtime) falls
+ * back to the local simulation adapter described in section 141 of the
+ * spec, unchanged — the step/status/log contract is identical either way,
+ * so the frontend never has to know which one ran.
  */
 @Processor(DEPLOYMENTS_QUEUE)
 export class DeploymentProcessor extends WorkerHost {
@@ -28,6 +36,9 @@ export class DeploymentProcessor extends WorkerHost {
     private readonly webhooks: WebhooksService,
     private readonly notifications: NotificationsService,
     private readonly scheduler: SchedulerService,
+    private readonly containerRuntime: ContainerRuntimeService,
+    private readonly gitClone: GitCloneService,
+    private readonly imageBuild: ImageBuildService,
   ) {
     super();
   }
@@ -86,14 +97,73 @@ export class DeploymentProcessor extends WorkerHost {
     const frontendDetected = services.some((s) => ["WEB_SERVICE", "STATIC_SITE"].includes(s.type));
     const backendDetected = services.some((s) => s.type === "API_SERVICE");
 
+    const deployableServices = services.filter((service) =>
+      !["POSTGRES", "MYSQL", "MARIADB", "REDIS", "OBJECT_STORAGE"].includes(service.type) &&
+      (!deployment.serviceId || service.id === deployment.serviceId),
+    );
+
+    // Real work only runs for a fresh build (not a rollback/template reuse,
+    // which replay a previously-built image tag whose provenance this pass
+    // doesn't re-verify) on a project with a connected repository where
+    // every deployable service's runtime is one ImageBuildService actually
+    // supports. Everything else — the vast majority of existing projects,
+    // which have no connected repository at all — keeps the simulated path.
+    const connectedRepo = !reusesImage ? await this.gitClone.getConnectedRepository(deployment.projectId) : null;
+    const unsupportedRuntime = deployableServices.find((s) => !this.imageBuild.isSupported(s.runtime));
+    let canDeployReal = !!connectedRepo && !unsupportedRuntime;
+    let downgradeReason: string | null = !connectedRepo
+      ? "No connected repository"
+      : unsupportedRuntime
+        ? `Runtime "${unsupportedRuntime.runtime}" (service "${unsupportedRuntime.name}") isn't supported by real builds yet`
+        : null;
+
+    if (canDeployReal) {
+      try {
+        await this.containerRuntime.ensureAvailable();
+      } catch (err) {
+        canDeployReal = false;
+        downgradeReason = (err as Error).message;
+      }
+    }
+
+    let clonedDir: string | null = null;
+    const realImageTags = new Map<string, string>();
+
+    if (!reusesImage && !canDeployReal) {
+      await this.log(deploymentId, "INFO", `${downgradeReason} — using simulated deployment`);
+    }
+
     try {
       for (const step of pipeline) {
         const status = this.statusForStep(step.key);
         await this.updateStatus(deploymentId, status, step.progressAt, step.label);
 
-        for (const line of step.logLines) {
-          await this.delay(STEP_DELAY_MS / step.logLines.length);
-          await this.log(deploymentId, "INFO", line);
+        if (canDeployReal && step.key === "clone") {
+          await this.log(deploymentId, "INFO", `Cloning ${connectedRepo!.fullName}@${deployment.branch}...`);
+          const cloned = await this.gitClone.cloneRepository(deployment.projectId, deployment.branch);
+          clonedDir = cloned.dir;
+          if (cloned.commitSha !== deployment.commitSha) {
+            await this.prisma.deployment.update({ where: { id: deploymentId }, data: { commitSha: cloned.commitSha } });
+            deployment.commitSha = cloned.commitSha;
+          }
+          await this.log(deploymentId, "INFO", `Cloned at commit ${cloned.commitSha.slice(0, 7)}`);
+        } else if (canDeployReal && step.key === "docker_image") {
+          for (const service of deployableServices) {
+            const tag = await this.imageBuild.buildImage(
+              service,
+              deployment.project.slug,
+              clonedDir!,
+              deployment.commitSha!,
+              (line) => this.log(deploymentId, "INFO", line),
+            );
+            realImageTags.set(service.id, tag);
+            await this.prisma.service.update({ where: { id: service.id }, data: { imageTag: tag } });
+          }
+        } else {
+          for (const line of step.logLines) {
+            await this.delay(STEP_DELAY_MS / step.logLines.length);
+            await this.log(deploymentId, "INFO", line);
+          }
         }
 
         if (step.key === "analyze") {
@@ -103,13 +173,13 @@ export class DeploymentProcessor extends WorkerHost {
       }
 
       if (!reusesImage) {
-        const dockerImageTag = `clouddeploy/${deployment.project.slug}:${deployment.commitSha}`;
+        const primaryTag = realImageTags.get(deployableServices[0]?.id ?? "") ?? `clouddeploy/${deployment.project.slug}:${deployment.commitSha}`;
         await this.prisma.build.update({
           where: { deploymentId },
           data: {
             status: "SUCCEEDED",
-            dockerImageTag,
-            registryPath: `${process.env.REGISTRY_URL ?? "localhost:5001"}/${dockerImageTag}`,
+            dockerImageTag: primaryTag,
+            registryPath: canDeployReal ? null : `${process.env.REGISTRY_URL ?? "localhost:5001"}/${primaryTag}`,
             finishedAt: new Date(),
           },
         });
@@ -122,36 +192,55 @@ export class DeploymentProcessor extends WorkerHost {
 
       const platformDomain = process.env.PLATFORM_DOMAIN ?? "clouddeploy.app";
       const isPreview = deployment.environment === "PREVIEW";
-      const previewUrl = isPreview
+      const previewUrl = isPreview && !canDeployReal
         ? `${this.slugify(deployment.branch)}-${deploymentId.slice(0, 6)}.${platformDomain}`
         : undefined;
+      // Reconciled below once real containers are up (real path only) —
+      // used for the webhook/notification payloads either way.
+      let finalPreviewUrl = previewUrl;
 
-      await this.prisma.deployment.update({
-        where: { id: deploymentId },
-        data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl },
-      });
-
-      if (isPreview) {
-        await this.log(deploymentId, "INFO", `Preview deployment ready at https://${previewUrl}`);
-      } else {
-        await this.prisma.project.update({
-          where: { id: deployment.projectId },
-          data: { productionUrl: deployment.project.productionUrl ?? `https://${deployment.project.slug}.clouddeploy.app` },
+      if (!canDeployReal) {
+        await this.prisma.deployment.update({
+          where: { id: deploymentId },
+          data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl },
         });
+        if (isPreview) {
+          await this.log(deploymentId, "INFO", `Preview deployment ready at https://${previewUrl}`);
+        } else {
+          await this.prisma.project.update({
+            where: { id: deployment.projectId },
+            data: { productionUrl: deployment.project.productionUrl ?? `https://${deployment.project.slug}.clouddeploy.app` },
+          });
+        }
       }
 
-      const deployableServices = services.filter((service) =>
-        !["POSTGRES", "MYSQL", "MARIADB", "REDIS", "OBJECT_STORAGE"].includes(service.type) &&
-        (!deployment.serviceId || service.id === deployment.serviceId),
-      );
       for (const service of deployableServices) {
-        if (service.port && !service.isPrivate && !service.publicUrl) {
+        if (!canDeployReal && service.port && !service.isPrivate && !service.publicUrl) {
           await this.prisma.service.update({
             where: { id: service.id },
             data: { publicUrl: `https://${service.name}-${deployment.project.slug}.${platformDomain}` },
           });
         }
         await this.scheduler.reconcileServiceReplicas(service.id, service.instances, deploymentId);
+      }
+
+      if (canDeployReal) {
+        // Real public URLs are only known once reconcileServiceReplicas has
+        // actually started each container (it writes Service.publicUrl
+        // itself) — read them back rather than guessing a template here.
+        const refreshed = await this.prisma.service.findMany({ where: { id: { in: deployableServices.map((s) => s.id) } } });
+        const primaryUrl = refreshed.find((s) => ["WEB_SERVICE", "STATIC_SITE"].includes(s.type))?.publicUrl ?? refreshed.find((s) => s.publicUrl)?.publicUrl;
+        if (isPreview) finalPreviewUrl = primaryUrl ?? undefined;
+        await this.prisma.deployment.update({
+          where: { id: deploymentId },
+          data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl: finalPreviewUrl },
+        });
+        if (primaryUrl && !isPreview) {
+          await this.prisma.project.update({ where: { id: deployment.projectId }, data: { productionUrl: primaryUrl } });
+        }
+        for (const service of refreshed) {
+          if (service.publicUrl) await this.log(deploymentId, "INFO", `${service.name} is live at ${service.publicUrl}`);
+        }
       }
 
       this.gateway.emitStatus(deploymentId, { status: "LIVE", progressPct: 100, currentStep: "Deploy Live" });
@@ -172,7 +261,7 @@ export class DeploymentProcessor extends WorkerHost {
       await this.webhooks.dispatch(
         organizationId,
         "deployment.success",
-        { deploymentId, projectId: deployment.projectId, branch: deployment.branch, commitSha: deployment.commitSha, previewUrl },
+        { deploymentId, projectId: deployment.projectId, branch: deployment.branch, commitSha: deployment.commitSha, previewUrl: finalPreviewUrl },
         deployment.projectId,
       );
 
@@ -213,6 +302,8 @@ export class DeploymentProcessor extends WorkerHost {
       }
 
       throw err;
+    } finally {
+      if (clonedDir) await this.gitClone.cleanup(clonedDir);
     }
   }
 

@@ -3,10 +3,11 @@ import { AdminInfrastructureController, RegionsController, ServerAgentController
 import { InfrastructureService } from "./infrastructure.service";
 import { RoutingService } from "./routing.service";
 import { SchedulerService } from "./scheduler.service";
+import { ContainerRuntimeService } from "./container-runtime.service";
 
 @Module({
   controllers: [RegionsController, ServerAgentController, AdminInfrastructureController],
-  providers: [InfrastructureService, RoutingService, SchedulerService],
-  exports: [InfrastructureService, RoutingService, SchedulerService],
+  providers: [InfrastructureService, RoutingService, SchedulerService, ContainerRuntimeService],
+  exports: [InfrastructureService, RoutingService, SchedulerService, ContainerRuntimeService],
 })
 export class InfrastructureModule {}

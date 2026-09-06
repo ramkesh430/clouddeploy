@@ -4,12 +4,14 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateServiceDto } from "./dto/create-service.dto";
 import { UpdateServiceDto } from "./dto/update-service.dto";
 import { WebhooksService } from "../webhooks/webhooks.service";
+import { ContainerRuntimeService } from "../infrastructure/container-runtime.service";
 
 @Injectable()
 export class ServicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly webhooks: WebhooksService,
+    private readonly containerRuntime: ContainerRuntimeService,
   ) {}
 
   async listByProject(projectId: string) {
@@ -118,7 +120,19 @@ export class ServicesService {
 
   async remove(serviceId: string) {
     await this.assertExists(serviceId);
+    await this.stopRealContainers(serviceId);
     return this.prisma.service.update({ where: { id: serviceId }, data: { deletedAt: new Date() } });
+  }
+
+  /** Stops any real Docker containers (and their public tunnels) running
+   * for this service so deleting it doesn't leak a running container. A
+   * no-op for services that were never really deployed. */
+  private async stopRealContainers(serviceId: string) {
+    const containers = await this.prisma.container.findMany({ where: { serviceId, status: { not: "REMOVED" }, dockerId: { not: null } } });
+    for (const container of containers) {
+      await this.containerRuntime.stopContainer(container.dockerId, container.tunnelPid);
+      await this.prisma.container.update({ where: { id: container.id }, data: { status: "REMOVED", healthy: false, stoppedAt: new Date() } });
+    }
   }
 
   private async assertExists(serviceId: string) {

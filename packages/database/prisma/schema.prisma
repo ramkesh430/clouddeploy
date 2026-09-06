@@ -447,6 +447,12 @@ model Service {
   internalHostname    String?
   isPrivate           Boolean       @default(false)
   crashCount          Int           @default(0)
+  /// Tag of the last successfully built real Docker image for this service
+  /// (e.g. "clouddeploy/acme-backend:a1b2c3d"), set by ImageBuildService.
+  /// Lets a later scale-up outside of a fresh deployment (autoscaling) know
+  /// what image to run without rebuilding. Null for services that have
+  /// never gone through a real build (they stay on the simulated path).
+  imageTag            String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   deletedAt           DateTime?
@@ -623,6 +629,13 @@ model Container {
   startedAt     DateTime?
   stoppedAt     DateTime?
   createdAt     DateTime        @default(now())
+
+  /// Real published host port for this container (Docker picks an
+  /// ephemeral one via `-p 0:<port>`), and the OS PID of the `cloudflared`
+  /// tunnel process giving it a public URL. Both null for simulated
+  /// containers. See ContainerRuntimeService.
+  hostPort  Int?
+  tunnelPid Int?
 
   // Live resource usage as last reported by a runtime-agent heartbeat —
   // distinct from `cpuCores`/`ramMb` above, which are the allocated request,

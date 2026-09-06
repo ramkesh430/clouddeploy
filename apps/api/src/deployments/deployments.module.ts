@@ -4,6 +4,8 @@ import { DeploymentsController } from "./deployments.controller";
 import { DeploymentsService, DEPLOYMENTS_QUEUE } from "./deployments.service";
 import { DeploymentProcessor } from "./deployment.processor";
 import { DeploymentsGateway } from "./deployments.gateway";
+import { GitCloneService } from "./git-clone.service";
+import { ImageBuildService } from "./image-build.service";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { WebhooksModule } from "../webhooks/webhooks.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -12,7 +14,7 @@ import { InfrastructureModule } from "../infrastructure/infrastructure.module";
 @Module({
   imports: [BullModule.registerQueue({ name: DEPLOYMENTS_QUEUE }), WebhooksModule, NotificationsModule, InfrastructureModule],
   controllers: [DeploymentsController],
-  providers: [DeploymentsService, DeploymentProcessor, DeploymentsGateway, RolesGuard],
+  providers: [DeploymentsService, DeploymentProcessor, DeploymentsGateway, RolesGuard, GitCloneService, ImageBuildService],
   exports: [DeploymentsService],
 })
 export class DeploymentsModule {}

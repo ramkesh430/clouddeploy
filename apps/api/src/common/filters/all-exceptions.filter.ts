@@ -7,6 +7,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { Request, Response } from "express";
+import * as Sentry from "@sentry/node";
 
 /**
  * Central error handler. Every unhandled exception passes through here so
@@ -44,6 +45,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(`${request.method} ${request.url} -> ${status}: ${message}`, (exception as Error)?.stack);
+      // A no-op unless SENTRY_DSN is set (see src/instrument.ts) — client
+      // errors (4xx) aren't bugs and don't need reporting.
+      Sentry.captureException(exception);
     } else {
       this.logger.warn(`${request.method} ${request.url} -> ${status}: ${message}`);
     }

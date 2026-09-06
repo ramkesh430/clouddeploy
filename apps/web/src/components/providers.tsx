@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { initErrorTracking } from "@/lib/error-tracking";
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    initErrorTracking();
+  }, []);
+
   const [queryClient] = useState(
     () =>
       new QueryClient({

@@ -17,6 +17,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { MarketingHeader } from "@/components/marketing/header";
+import { MarketingFooter } from "@/components/marketing/footer";
+import { DashboardPreview } from "@/components/marketing/dashboard-preview";
+import { CTA } from "@/components/marketing/cta";
 
 const stack = [
   { icon: Globe, title: "Frontend", desc: "React, Next.js, Vue" },
@@ -51,30 +55,7 @@ const flowSteps = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Boxes className="h-4 w-4" />
-            </div>
-            <span className="text-base font-semibold">CloudDeploy</span>
-          </div>
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <Link href="#features" className="hover:text-foreground">Product</Link>
-            <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
-            <Link href="/docs" className="hover:text-foreground">Docs</Link>
-            <Link href="/status" className="hover:text-foreground">Status</Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/login">Login</Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link href="/register">Sign Up</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <MarketingHeader />
 
       <section className="bg-sidebar text-sidebar-foreground">
         <div className="container flex flex-col items-center gap-6 py-20 text-center">
@@ -101,43 +82,8 @@ export default function LandingPage() {
             </Button>
           </div>
 
-          <div className="mt-6 w-full max-w-4xl overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-2xl">
-            <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-destructive/70" />
-              <span className="h-2.5 w-2.5 rounded-full bg-warning/70" />
-              <span className="h-2.5 w-2.5 rounded-full bg-success/70" />
-            </div>
-            <div className="grid grid-cols-[100px_1fr] bg-background text-left sm:grid-cols-[150px_1fr]">
-              <div className="hidden flex-col gap-2 border-r border-border bg-sidebar/95 p-3 sm:flex">
-                {[true, false, false, false].map((active, i) => (
-                  <div key={i} className={`h-2.5 rounded ${active ? "bg-white/25" : "bg-white/10"}`} style={{ width: `${70 - i * 8}%` }} />
-                ))}
-              </div>
-              <div className="flex flex-col gap-3 p-4">
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { color: "bg-primary/10 text-primary" },
-                    { color: "bg-success/10 text-success" },
-                    { color: "bg-warning/10 text-warning" },
-                    { color: "bg-secondary/10 text-secondary" },
-                  ].map((c, i) => (
-                    <div key={i} className="flex flex-col gap-2 rounded-md border border-border p-2.5">
-                      <div className={`h-5 w-5 rounded ${c.color}`} />
-                      <div className="h-2 w-2/3 rounded bg-muted" />
-                    </div>
-                  ))}
-                </div>
-                <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-                  {[0, 1, 2].map((i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="h-5 w-5 shrink-0 rounded bg-primary/10" />
-                      <div className="h-2 flex-1 max-w-[40%] rounded bg-muted" />
-                      <div className="h-2 w-12 rounded-full bg-success/20" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div className="mt-6 w-full max-w-4xl">
+            <DashboardPreview />
           </div>
         </div>
       </section>
@@ -192,24 +138,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-y border-border bg-muted/30">
-        <div className="container flex flex-col items-center gap-4 py-16 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Ready to deploy your entire application?</h2>
-          <p className="max-w-lg text-muted-foreground">Start free — no credit card required. Upgrade when you need more.</p>
-          <Button size="lg" asChild>
-            <Link href="/register">Get Started Free <ArrowRight className="h-4 w-4" /></Link>
-          </Button>
-        </div>
-      </section>
+      <CTA />
 
-      <footer className="container flex flex-col items-center justify-between gap-4 py-10 text-sm text-muted-foreground sm:flex-row">
-        <span>© {new Date().getFullYear()} CloudDeploy. All rights reserved.</span>
-        <div className="flex gap-6">
-          <Link href="/docs" className="hover:text-foreground">Docs</Link>
-          <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
-          <Link href="/status" className="hover:text-foreground">Status</Link>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

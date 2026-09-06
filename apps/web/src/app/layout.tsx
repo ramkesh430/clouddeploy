@@ -6,10 +6,28 @@ import "./globals.css";
 const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const fontMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://clouddeploy.app";
+const title = "CloudDeploy — Deploy Your Entire Application";
+const description =
+  "Frontend, backend, database, storage, domains and SSL — all from one cloud platform. Connect GitHub, detect your stack, and deploy your full application in minutes.";
+
 export const metadata: Metadata = {
-  title: "CloudDeploy — Deploy Your Entire Application",
-  description:
-    "Frontend, backend, database, storage, domains and SSL — all from one cloud platform. Connect GitHub, detect your stack, and deploy your full application in minutes.",
+  metadataBase: new URL(siteUrl),
+  title,
+  description,
+  openGraph: {
+    title,
+    description,
+    url: siteUrl,
+    siteName: "CloudDeploy",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

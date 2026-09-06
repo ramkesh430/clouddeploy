@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCw, Plus, Copy } from "lucide-react";
+import { RotateCw, Plus, Copy, Globe, Server, Database as DatabaseIcon, Layers, LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { useServices, useRestartService } from "@/hooks/use-services";
 import { api } from "@/lib/api-client";
 import { toast } from "@/lib/store/toast-store";
+
+const SERVICE_ICONS: Record<string, LucideIcon> = {
+  WEB_SERVICE: Globe,
+  STATIC_SITE: Globe,
+  API_SERVICE: Server,
+  DOCKER_SERVICE: Server,
+  POSTGRES: DatabaseIcon,
+  MYSQL: DatabaseIcon,
+  MARIADB: DatabaseIcon,
+  REDIS: Layers,
+};
 
 export default function ProjectServicesPage() {
   const params = useParams<{ projectId: string }>();
@@ -54,51 +65,39 @@ export default function ProjectServicesPage() {
       </div>
 
       <Card>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="p-4 font-medium">Service</th>
-                <th className="p-4 font-medium">Type</th>
-                <th className="p-4 font-medium">Runtime</th>
-                <th className="p-4 font-medium">Status</th>
-                <th className="p-4 font-medium">CPU</th>
-                <th className="p-4 font-medium">RAM</th>
-                <th className="p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(services ?? []).map((s) => (
-                <tr key={s.id} className="border-b border-border/60 last:border-0">
-                  <td className="p-4 font-medium">{s.name}</td>
-                  <td className="p-4 text-muted-foreground">{s.type.replace(/_/g, " ")}</td>
-                  <td className="p-4 text-muted-foreground">{s.runtime}</td>
-                  <td className="p-4"><StatusBadge status={s.status} /></td>
-                  <td className="p-4 text-muted-foreground">{s.cpuCores}</td>
-                  <td className="p-4 text-muted-foreground">{s.ramMb} MB</td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-1">
-                      {s.type === "REDIS" && s.redisInstance?.id && (
-                        <Button variant="ghost" size="sm" onClick={() => setConnectionFor({ redisInstanceId: s.redisInstance.id })}>
-                          Connection
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => restart.mutate(s.id)}>
-                        <RotateCw className="h-3.5 w-3.5" /> Restart
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {(services ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">
-                    No services yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <CardContent className="flex flex-col p-0">
+          {(services ?? []).map((s) => {
+            const Icon = SERVICE_ICONS[s.type] ?? Server;
+            const isInternal = ["POSTGRES", "MYSQL", "MARIADB", "REDIS"].includes(s.type);
+            return (
+              <div key={s.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{s.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{s.type.replace(/_/g, " ")} · {s.runtime}</p>
+                </div>
+                <StatusBadge status={s.status} />
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{isInternal ? "Internal Network" : ""}</span>
+                <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">{s.cpuCores} CPU</span>
+                <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">{s.ramMb} MB</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  {s.type === "REDIS" && s.redisInstance?.id && (
+                    <Button variant="ghost" size="sm" onClick={() => setConnectionFor({ redisInstanceId: s.redisInstance.id })}>
+                      Connection
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => restart.mutate(s.id)}>
+                    <RotateCw className="h-3.5 w-3.5" /> Restart
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+          {(services ?? []).length === 0 && (
+            <p className="p-8 text-center text-sm text-muted-foreground">No services yet.</p>
+          )}
         </CardContent>
       </Card>
 

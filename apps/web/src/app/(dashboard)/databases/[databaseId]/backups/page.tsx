@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { Save } from "lucide-react";
+import { Save, Archive } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
@@ -39,40 +39,28 @@ export default function DatabaseBackupsPage() {
       </div>
 
       <Card>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="p-4 font-medium">Backup</th>
-                <th className="p-4 font-medium">Type</th>
-                <th className="p-4 font-medium">Size</th>
-                <th className="p-4 font-medium">Status</th>
-                <th className="p-4 font-medium">Created</th>
-                <th className="p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(backups ?? []).map((b: any) => (
-                <tr key={b.id} className="border-b border-border/60 last:border-0">
-                  <td className="p-4 font-mono text-xs">{b.id.slice(0, 12)}</td>
-                  <td className="p-4 text-muted-foreground">{b.type}</td>
-                  <td className="p-4 text-muted-foreground">{b.sizeBytes ? formatBytes(Number(b.sizeBytes)) : "—"}</td>
-                  <td className="p-4"><StatusBadge status={b.status} /></td>
-                  <td className="p-4 text-muted-foreground">{formatRelativeTime(b.createdAt)}</td>
-                  <td className="p-4">
-                    {b.status === "COMPLETED" && (
-                      <Button size="sm" variant="outline" onClick={() => setConfirmBackupId(b.id)}>
-                        Restore
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {(backups ?? []).length === 0 && (
-                <tr><td colSpan={6} className="p-8 text-center text-sm text-muted-foreground">No backups yet.</td></tr>
+        <CardContent className="flex flex-col p-0">
+          {(backups ?? []).map((b: any) => (
+            <div key={b.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Archive className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-xs font-medium">{b.id.slice(0, 12)}</p>
+                <p className="truncate text-xs text-muted-foreground">{b.type} · {b.sizeBytes ? formatBytes(Number(b.sizeBytes)) : "—"}</p>
+              </div>
+              <StatusBadge status={b.status} />
+              <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{formatRelativeTime(b.createdAt)}</span>
+              {b.status === "COMPLETED" && (
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => setConfirmBackupId(b.id)}>
+                  Restore
+                </Button>
               )}
-            </tbody>
-          </table>
+            </div>
+          ))}
+          {(backups ?? []).length === 0 && (
+            <p className="p-8 text-center text-sm text-muted-foreground">No backups yet.</p>
+          )}
         </CardContent>
       </Card>
 

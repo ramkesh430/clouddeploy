@@ -12,9 +12,19 @@ import {
   Bot,
   Users,
   Boxes,
+  Container,
+  PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+
+const stack = [
+  { icon: Globe, title: "Frontend", desc: "React, Next.js, Vue" },
+  { icon: Server, title: "Backend", desc: "Node.js, Python, PHP" },
+  { icon: Database, title: "Database", desc: "PostgreSQL, MySQL" },
+  { icon: HardDrive, title: "Storage", desc: "S3, Files, Backups" },
+  { icon: Container, title: "Any Language", desc: "Via Docker" },
+];
 
 const features = [
   { icon: Boxes, title: "Full-Stack Deployments", desc: "Frontend, backend, database and Redis deployed together as one application, not four separate providers." },
@@ -50,58 +60,101 @@ export default function LandingPage() {
             <span className="text-base font-semibold">CloudDeploy</span>
           </div>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <Link href="#features" className="hover:text-foreground">Features</Link>
+            <Link href="#features" className="hover:text-foreground">Product</Link>
             <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
-            <Link href="/docs" className="hover:text-foreground">Documentation</Link>
+            <Link href="/docs" className="hover:text-foreground">Docs</Link>
             <Link href="/status" className="hover:text-foreground">Status</Link>
           </nav>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/login">Log in</Link>
+              <Link href="/login">Login</Link>
             </Button>
             <Button size="sm" asChild>
-              <Link href="/register">Get Started Free</Link>
+              <Link href="/register">Sign Up</Link>
             </Button>
           </div>
         </div>
       </header>
 
-      <section className="border-b border-border bg-gradient-to-b from-muted/40 to-background">
-        <div className="container flex flex-col items-center gap-6 py-24 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+      <section className="bg-sidebar text-sidebar-foreground">
+        <div className="container flex flex-col items-center gap-6 py-20 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-sidebar-foreground/70">
             <span className="h-1.5 w-1.5 rounded-full bg-success" /> A complete application cloud
           </div>
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight sm:text-6xl">
+          <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-6xl">
             Deploy Your Entire Application
           </h1>
-          <p className="max-w-xl text-balance text-lg text-muted-foreground">
-            Frontend, backend, database, storage, domains and SSL — all from one cloud platform. One deploy, not four providers.
+          <p className="text-xl font-medium text-primary sm:text-2xl">Frontend + Backend + Database</p>
+          <p className="max-w-xl text-balance text-lg text-sidebar-foreground/70">
+            From GitHub to production in one click.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" asChild>
               <Link href="/register">
-                Deploy Your First Project <ArrowRight className="h-4 w-4" />
+                Get Started Free <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="/docs">Explore Documentation</Link>
+            <Button size="lg" variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white" asChild>
+              <Link href="/docs">
+                <PlayCircle className="h-4 w-4" /> View Demo
+              </Link>
             </Button>
           </div>
 
-          <div className="mt-12 grid w-full max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
-            {["Frontend", "Backend", "Database", "Storage"].map((s, i) => (
-              <Card key={s} className="animate-in fade-in slide-in-from-bottom-2" style={{ animationDelay: `${i * 80}ms` }}>
-                <CardContent className="flex flex-col items-center gap-2 p-4">
-                  {[Globe, Server, Database, HardDrive][i] &&
-                    (() => {
-                      const Icon = [Globe, Server, Database, HardDrive][i];
-                      return <Icon className="h-5 w-5 text-primary" />;
-                    })()}
-                  <span className="text-xs font-medium text-muted-foreground">{s}</span>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="mt-6 w-full max-w-4xl overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] shadow-2xl">
+            <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-destructive/70" />
+              <span className="h-2.5 w-2.5 rounded-full bg-warning/70" />
+              <span className="h-2.5 w-2.5 rounded-full bg-success/70" />
+            </div>
+            <div className="grid grid-cols-[100px_1fr] bg-background text-left sm:grid-cols-[150px_1fr]">
+              <div className="hidden flex-col gap-2 border-r border-border bg-sidebar/95 p-3 sm:flex">
+                {[true, false, false, false].map((active, i) => (
+                  <div key={i} className={`h-2.5 rounded ${active ? "bg-white/25" : "bg-white/10"}`} style={{ width: `${70 - i * 8}%` }} />
+                ))}
+              </div>
+              <div className="flex flex-col gap-3 p-4">
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { color: "bg-primary/10 text-primary" },
+                    { color: "bg-success/10 text-success" },
+                    { color: "bg-warning/10 text-warning" },
+                    { color: "bg-secondary/10 text-secondary" },
+                  ].map((c, i) => (
+                    <div key={i} className="flex flex-col gap-2 rounded-md border border-border p-2.5">
+                      <div className={`h-5 w-5 rounded ${c.color}`} />
+                      <div className="h-2 w-2/3 rounded bg-muted" />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="h-5 w-5 shrink-0 rounded bg-primary/10" />
+                      <div className="h-2 flex-1 max-w-[40%] rounded bg-muted" />
+                      <div className="h-2 w-12 rounded-full bg-success/20" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+      </section>
+
+      <section className="border-b border-border">
+        <div className="container grid grid-cols-2 gap-6 py-10 sm:grid-cols-5">
+          {stack.map((s) => (
+            <div key={s.title} className="flex flex-col items-center gap-2 text-center sm:items-start sm:text-left">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <s.icon className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{s.title}</p>
+                <p className="text-xs text-muted-foreground">{s.desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

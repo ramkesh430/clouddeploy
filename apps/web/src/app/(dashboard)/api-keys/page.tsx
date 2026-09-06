@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Copy, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Copy, ChevronDown, KeyRound } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,40 +114,28 @@ function ApiKeysSection() {
       </div>
 
       <Card>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="p-4 font-medium">Name</th>
-                <th className="p-4 font-medium">Key</th>
-                <th className="p-4 font-medium">Permissions</th>
-                <th className="p-4 font-medium">Last Used</th>
-                <th className="p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(keys ?? []).map((k) => (
-                <tr key={k.id} className="border-b border-border/60 last:border-0">
-                  <td className="p-4 font-medium">{k.name}</td>
-                  <td className="p-4 font-mono text-xs text-muted-foreground">{k.prefix}…</td>
-                  <td className="p-4">
-                    <div className="flex flex-wrap gap-1">
-                      {k.permissions.map((p) => <Badge key={p} variant="outline">{p}</Badge>)}
-                    </div>
-                  </td>
-                  <td className="p-4 text-muted-foreground">{k.lastUsedAt ? formatRelativeTime(k.lastUsedAt) : "Never"}</td>
-                  <td className="p-4">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setConfirmRevokeId(k.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {(keys ?? []).length === 0 && (
-                <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">No API keys yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+        <CardContent className="flex flex-col p-0">
+          {(keys ?? []).map((k) => (
+            <div key={k.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{k.name}</p>
+                <p className="truncate font-mono text-xs text-muted-foreground">{k.prefix}…</p>
+              </div>
+              <div className="hidden flex-wrap gap-1 sm:flex">
+                {k.permissions.map((p) => <Badge key={p} variant="outline">{p}</Badge>)}
+              </div>
+              <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">{k.lastUsedAt ? formatRelativeTime(k.lastUsedAt) : "Never"}</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => setConfirmRevokeId(k.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+          {(keys ?? []).length === 0 && (
+            <p className="p-8 text-center text-sm text-muted-foreground">No API keys yet.</p>
+          )}
         </CardContent>
       </Card>
 

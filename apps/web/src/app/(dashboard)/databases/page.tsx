@@ -84,39 +84,26 @@ export default function DatabasesPage() {
         <Card><CardContent className="p-0"><EmptyState title="No Databases" description="Create your first database." action={{ label: "Create Database", href: "#", icon: Plus }} /></CardContent></Card>
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="p-4 font-medium">Database</th>
-                  <th className="p-4 font-medium">Type</th>
-                  <th className="p-4 font-medium">Region</th>
-                  <th className="p-4 font-medium">Storage</th>
-                  <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 font-medium">Created</th>
-                  <th className="p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(databases ?? []).map((db) => (
-                  <tr key={db.id} className="border-b border-border/60 last:border-0">
-                    <td className="p-4 font-medium">{db.name}</td>
-                    <td className="p-4 text-muted-foreground">{db.engine} {db.version}</td>
-                    <td className="p-4 text-muted-foreground">{db.region}</td>
-                    <td className="p-4 text-muted-foreground">{formatBytes(db.storageUsedMb * 1024 * 1024)} / {formatBytes(db.storageMb * 1024 * 1024)}</td>
-                    <td className="p-4"><StatusBadge status={db.status} /></td>
-                    <td className="p-4 text-muted-foreground">{formatRelativeTime(db.createdAt)}</td>
-                    <td className="p-4">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/databases/${db.id}`}>
-                          <DatabaseIcon className="h-3.5 w-3.5" /> Manage
-                        </Link>
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent className="flex flex-col p-0">
+            {(databases ?? []).map((db) => (
+              <div key={db.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <DatabaseIcon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{db.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{db.engine} {db.version} · {db.region}</p>
+                </div>
+                <StatusBadge status={db.status} />
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                  {formatBytes(db.storageUsedMb * 1024 * 1024)} / {formatBytes(db.storageMb * 1024 * 1024)}
+                </span>
+                <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">{formatRelativeTime(db.createdAt)}</span>
+                <Button variant="ghost" size="sm" className="shrink-0" asChild>
+                  <Link href={`/databases/${db.id}`}>Manage</Link>
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

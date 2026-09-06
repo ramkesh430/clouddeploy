@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { Plus, Trash2, Copy } from "lucide-react";
+import { Plus, Trash2, Copy, UserRound } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,34 +85,25 @@ export default function DatabaseUsersPage() {
       </div>
 
       <Card>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="p-4 font-medium">Username</th>
-                <th className="p-4 font-medium">Access</th>
-                <th className="p-4 font-medium">Created</th>
-                <th className="p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(users ?? []).map((u) => (
-                <tr key={u.id} className="border-b border-border/60 last:border-0">
-                  <td className="p-4 font-mono text-xs">{u.username}</td>
-                  <td className="p-4"><Badge variant={u.role === "readwrite" ? "warning" : "outline"}>{u.role}</Badge></td>
-                  <td className="p-4 text-muted-foreground">{formatRelativeTime(u.createdAt)}</td>
-                  <td className="p-4">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setConfirmDeleteId(u.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {(users ?? []).length === 0 && (
-                <tr><td colSpan={4} className="p-8 text-center text-sm text-muted-foreground">No additional database users yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+        <CardContent className="flex flex-col p-0">
+          {(users ?? []).map((u) => (
+            <div key={u.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <UserRound className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-xs font-medium">{u.username}</p>
+                <p className="truncate text-xs text-muted-foreground">{formatRelativeTime(u.createdAt)}</p>
+              </div>
+              <Badge variant={u.role === "readwrite" ? "warning" : "outline"}>{u.role}</Badge>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => setConfirmDeleteId(u.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+          {(users ?? []).length === 0 && (
+            <p className="p-8 text-center text-sm text-muted-foreground">No additional database users yet.</p>
+          )}
         </CardContent>
       </Card>
 

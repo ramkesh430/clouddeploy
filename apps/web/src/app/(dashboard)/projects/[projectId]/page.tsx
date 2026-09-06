@@ -21,18 +21,18 @@ export default function ProjectOverviewPage() {
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
-          { label: "Services", value: services.length, icon: Activity },
-          { label: "Total RAM", value: `${totalRam} MB`, icon: MemoryStick },
-          { label: "CPU Allocated", value: `${services.reduce((s: number, x: any) => s + (x.cpuCores ?? 0), 0)} cores`, icon: Cpu },
-          { label: "Storage", value: "—", icon: HardDrive },
+          { label: "Services", value: services.length, icon: Activity, color: "text-primary bg-primary/10" },
+          { label: "Total RAM", value: `${totalRam} MB`, icon: MemoryStick, color: "text-secondary bg-secondary/10" },
+          { label: "CPU Allocated", value: `${services.reduce((s: number, x: any) => s + (x.cpuCores ?? 0), 0)} cores`, icon: Cpu, color: "text-warning bg-warning/10" },
+          { label: "Storage", value: "—", icon: HardDrive, color: "text-success bg-success/10" },
         ].map((c) => (
           <Card key={c.label}>
-            <CardContent className="flex flex-col gap-2 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{c.label}</span>
-                <c.icon className="h-3.5 w-3.5 text-muted-foreground" />
+            <CardContent className="flex flex-col gap-3 p-5">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${c.color}`}>
+                <c.icon className="h-5 w-5" />
               </div>
-              <span className="text-xl font-semibold">{c.value}</span>
+              <span className="text-2xl font-bold tracking-tight">{c.value}</span>
+              <span className="text-xs text-muted-foreground">{c.label}</span>
             </CardContent>
           </Card>
         ))}

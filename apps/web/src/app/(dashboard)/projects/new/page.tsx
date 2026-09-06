@@ -1,71 +1,93 @@
 "use client";
 
 import Link from "next/link";
-import { Github, Container, LayoutTemplate, FileBox, ArrowRight, Clock } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Github, Container, LayoutTemplate, FileBox, KeySquare, Settings2, Rocket } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useActiveOrganization } from "@/hooks/use-active-organization";
+import { useGithubConnections, useConnectGithub } from "@/hooks/use-github";
 
-const options = [
-  {
-    href: "/projects/new/import",
-    icon: Github,
-    title: "Import GitHub Repository",
-    description: "Connect a repository and CloudDeploy detects your stack automatically.",
-    badge: "Requires GitHub connection",
-  },
-  {
-    href: "/projects/new/empty?mode=docker",
-    icon: Container,
-    title: "Deploy Docker Image",
-    description: "Bring any Dockerfile — Docker is the universal fallback for any web app.",
-  },
-  {
-    href: "/templates",
-    icon: LayoutTemplate,
-    title: "Deploy Template",
-    description: "Start from a ready-made stack: Next.js, MERN, Laravel + MySQL, and more.",
-    badge: "Coming soon",
-  },
-  {
-    href: "/projects/new/empty",
-    icon: FileBox,
-    title: "Empty Project",
-    description: "Start from scratch and add services, databases, and Redis one at a time.",
-  },
+const quickStarts = [
+  { href: "/projects/new/import", icon: Github, label: "Import from GitHub", variant: "default" as const },
+  { href: "/projects/new/empty?mode=docker", icon: Container, label: "Deploy with Docker", variant: "outline" as const },
+  { href: "/templates", icon: LayoutTemplate, label: "Start from Template", variant: "outline" as const },
+  { href: "/projects/new/empty", icon: FileBox, label: "Empty Project", variant: "outline" as const },
+];
+
+const howItWorks = [
+  { icon: Github, title: "Connect GitHub", description: "Authorize and select a repository." },
+  { icon: Settings2, title: "Configure Services", description: "We detect your stack automatically." },
+  { icon: Rocket, title: "Deploy", description: "Your application goes live." },
 ];
 
 export default function NewProjectPage() {
+  const { active } = useActiveOrganization();
+  const { data: connections, isLoading: connectionsLoading } = useGithubConnections(active?.id ?? null);
+  const connectGithub = useConnectGithub();
+  const isConnected = !connectionsLoading && (connections?.length ?? 0) > 0;
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Create a new project</h1>
-        <p className="text-sm text-muted-foreground">Choose how you&apos;d like to start.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Create Project</h1>
+        <p className="text-sm text-muted-foreground">Connect your repository and deploy in minutes.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {options.map((opt) => (
-          <Link key={opt.title} href={opt.href}>
-            <Card className="h-full transition-colors hover:border-primary/40">
-              <CardContent className="flex flex-col gap-3 p-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <opt.icon className="h-5 w-5" />
-                  </div>
-                  {opt.badge && (
-                    <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                      <Clock className="h-3 w-3" /> {opt.badge}
-                    </span>
-                  )}
+
+      <div className="flex flex-wrap gap-3">
+        {quickStarts.map((opt) => (
+          <Button key={opt.label} variant={opt.variant} asChild>
+            <Link href={opt.href}>
+              <opt.icon className="h-4 w-4" /> {opt.label}
+            </Link>
+          </Button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="items-center text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Github className="h-6 w-6" />
+            </div>
+            <CardTitle>Connect GitHub</CardTitle>
+            <CardDescription>Authorize with GitHub to import your repositories.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {isConnected ? (
+              <Button className="w-full" asChild>
+                <Link href="/projects/new/import">
+                  <Github className="h-4 w-4" /> Browse repositories
+                </Link>
+              </Button>
+            ) : (
+              <Button className="w-full" loading={connectGithub.isPending} onClick={() => active && connectGithub.mutate(active.id)}>
+                <Github className="h-4 w-4" /> Connect GitHub
+              </Button>
+            )}
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+              <KeySquare className="h-3 w-3" /> We only read your repositories. No code is stored on our servers.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>How it works</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {howItWorks.map((step, i) => (
+              <div key={step.title} className="flex items-start gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                  {i + 1}
                 </div>
                 <div>
-                  <p className="font-semibold">{opt.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{opt.description}</p>
+                  <p className="text-sm font-medium">{step.title}</p>
+                  <p className="text-xs text-muted-foreground">{step.description}</p>
                 </div>
-                <span className="mt-auto flex items-center gap-1 text-sm font-medium text-primary">
-                  Continue <ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

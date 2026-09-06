@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, ArrowLeft, ArrowRight, Rocket, Server, Globe, Github, Database, Layers } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, ArrowRight, Rocket, Server, Globe, Github, Database, Layers, LayoutTemplate, Container, Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,6 +96,17 @@ function EmptyProjectWizard() {
   const [addDatabase, setAddDatabase] = useState(false);
   const [addRedis, setAddRedis] = useState(false);
   const [detecting, setDetecting] = useState(isGithubImport);
+  // Detected services start collapsed to a summary row (mirroring what the
+  // stack detector already found); a manually-added service starts expanded
+  // since its fields are still blank and need immediate attention.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => (isGithubImport ? new Set() : new Set(services.map((s) => s.id))));
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     if (!isGithubImport) return;
@@ -141,6 +152,18 @@ function EmptyProjectWizard() {
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
   const removeService = (id: string) => setServices((prev) => prev.filter((s) => s.id !== id));
+
+  const addService = () => {
+    const draft = newDraftService({ name: `service-${services.length + 1}` });
+    setServices((prev) => [...prev, draft]);
+    setExpandedIds((prev) => new Set(prev).add(draft.id));
+  };
+
+  const serviceIcon = (type: ServiceType) => {
+    if (type === "DOCKER_SERVICE") return Container;
+    if (type === "WEB_SERVICE" || type === "STATIC_SITE") return LayoutTemplate;
+    return Server;
+  };
 
   const estimatedCost = useMemo(() => {
     const servicesCost = services.reduce((sum, s) => {
@@ -201,16 +224,16 @@ function EmptyProjectWizard() {
   };
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+    <div className={`mx-auto flex w-full flex-col gap-6 ${step === 1 ? "max-w-4xl" : "max-w-2xl"}`}>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {STEPS.map((label, i) => (
           <div key={label} className="flex items-center gap-2">
             <span
               className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
-                i <= step ? "bg-primary text-primary-foreground" : "bg-muted"
+                i < step ? "bg-primary text-primary-foreground" : i === step ? "bg-primary text-primary-foreground" : "bg-muted"
               }`}
             >
-              {i + 1}
+              {i < step ? <Check className="h-3 w-3" /> : i + 1}
             </span>
             <span className={i === step ? "font-medium text-foreground" : ""}>{label}</span>
             {i < STEPS.length - 1 && <div className="h-px w-6 bg-border" />}
@@ -268,108 +291,162 @@ function EmptyProjectWizard() {
       )}
 
       {step === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{isGithubImport ? "Detected Architecture" : "Services"}</CardTitle>
-            <CardDescription>
-              {isGithubImport ? "Review what we found, then edit anything before deploying." : "Add one service per process — frontend, backend, worker, etc."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {(detected?.database || detected?.redis) && (
-              <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-                {detected.database && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={addDatabase} onChange={(e) => setAddDatabase(e.target.checked)} className="h-4 w-4" />
-                    <Database className="h-3.5 w-3.5 text-primary" />
-                    <span>Provision {detected.database.engine === "POSTGRESQL" ? "PostgreSQL" : "MySQL"} — {detected.database.reason}</span>
-                  </label>
-                )}
-                {detected.redis && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={addRedis} onChange={(e) => setAddRedis(e.target.checked)} className="h-4 w-4" />
-                    <Layers className="h-3.5 w-3.5 text-primary" />
-                    <span>Provision Redis — {detected.redis.reason}</span>
-                  </label>
-                )}
-              </div>
-            )}
-            {services.map((s) => (
-              <div key={s.id} className="flex flex-col gap-3 rounded-md border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Server className="h-4 w-4 text-primary" /> {s.framework && s.framework !== "UNKNOWN" ? s.framework.replace(/_/g, " ") : "Service"}
+        <div className="grid gap-4 md:grid-cols-[1fr_280px]">
+          <Card>
+            <CardHeader>
+              <CardTitle>{isGithubImport ? "Detected Services" : "Services"}</CardTitle>
+              <CardDescription>
+                {isGithubImport ? "Review what we found, then edit anything before deploying." : "Add one service per process — frontend, backend, worker, etc."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {services.map((s) => {
+                const Icon = serviceIcon(s.type);
+                const expanded = expandedIds.has(s.id);
+                return (
+                  <div key={s.id} className="flex flex-col gap-3 rounded-md border border-border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {s.framework && s.framework !== "UNKNOWN" ? s.framework.replace(/_/g, " ") : s.name}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">directory: {s.rootDirectory}</p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => toggleExpanded(s.id)}>
+                          {expanded ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                          {expanded ? "Done" : "Edit"}
+                        </Button>
+                        {services.length > 1 && (
+                          <button onClick={() => removeService(s.id)} className="text-muted-foreground hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {expanded && (
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-1.5">
+                            <Label>Name</Label>
+                            <Input value={s.name} onChange={(e) => updateService(s.id, { name: e.target.value })} />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <Label>Type</Label>
+                            <select
+                              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                              value={s.type}
+                              onChange={(e) => updateService(s.id, { type: e.target.value as ServiceType })}
+                            >
+                              {Object.values(ServiceType)
+                                .filter((t) => !["POSTGRES", "MYSQL", "MARIADB", "REDIS", "OBJECT_STORAGE"].includes(t))
+                                .map((t) => (
+                                  <option key={t} value={t}>
+                                    {t.replace(/_/g, " ")}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <Label>Root Directory</Label>
+                            <Input value={s.rootDirectory} onChange={(e) => updateService(s.id, { rootDirectory: e.target.value })} />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <Label>Port</Label>
+                            <Input value={s.port} onChange={(e) => updateService(s.id, { port: e.target.value })} />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <Label>Build Command</Label>
+                            <Input value={s.buildCommand} onChange={(e) => updateService(s.id, { buildCommand: e.target.value })} />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <Label>Start Command</Label>
+                            <Input value={s.startCommand} onChange={(e) => updateService(s.id, { startCommand: e.target.value })} />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label>Resources</Label>
+                          <div className="flex gap-2">
+                            {RESOURCE_PRESETS.map((preset) => (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => updateService(s.id, { resourcePreset: preset.id as DraftService["resourcePreset"] })}
+                                className={`flex-1 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${
+                                  s.resourcePreset === preset.id ? "border-primary bg-primary/5" : "border-border"
+                                }`}
+                              >
+                                <p className="font-medium">{preset.name}</p>
+                                <p className="text-muted-foreground">{preset.cpuCores} CPU · {preset.ramMb}MB</p>
+                                <p className="text-muted-foreground">${preset.estimatedMonthlyUsd}/mo</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  {services.length > 1 && (
-                    <button onClick={() => removeService(s.id)} className="text-muted-foreground hover:text-destructive">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                );
+              })}
+              <Button variant="outline" size="sm" className="w-fit" onClick={addService}>
+                <Plus className="h-3.5 w-3.5" /> Add Service
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="h-fit">
+            <CardHeader>
+              <CardTitle className="text-base">Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Project Name</span>
+                <span className="text-sm font-medium">{name || "—"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Region</span>
+                <span className="text-sm font-medium">{region}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Domain</span>
+                <span className="truncate text-sm font-medium">{slug || "—"}.clouddeploy.app</span>
+                <span className="text-xs text-muted-foreground">You can add a custom domain later.</span>
+              </div>
+              {(detected?.database || detected?.redis) && (
+                <div className="flex flex-col gap-2 border-t border-border pt-4">
+                  {detected.database && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" checked={addDatabase} onChange={(e) => setAddDatabase(e.target.checked)} className="mt-0.5 h-4 w-4" />
+                      <span className="flex items-start gap-1.5">
+                        <Database className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span>Provision {detected.database.engine === "POSTGRESQL" ? "PostgreSQL" : "MySQL"} — {detected.database.reason}</span>
+                      </span>
+                    </label>
+                  )}
+                  {detected.redis && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" checked={addRedis} onChange={(e) => setAddRedis(e.target.checked)} className="mt-0.5 h-4 w-4" />
+                      <span className="flex items-start gap-1.5">
+                        <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span>Provision Redis — {detected.redis.reason}</span>
+                      </span>
+                    </label>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Name</Label>
-                    <Input value={s.name} onChange={(e) => updateService(s.id, { name: e.target.value })} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Type</Label>
-                    <select
-                      className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                      value={s.type}
-                      onChange={(e) => updateService(s.id, { type: e.target.value as ServiceType })}
-                    >
-                      {Object.values(ServiceType)
-                        .filter((t) => !["POSTGRES", "MYSQL", "MARIADB", "REDIS", "OBJECT_STORAGE"].includes(t))
-                        .map((t) => (
-                          <option key={t} value={t}>
-                            {t.replace(/_/g, " ")}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Root Directory</Label>
-                    <Input value={s.rootDirectory} onChange={(e) => updateService(s.id, { rootDirectory: e.target.value })} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Port</Label>
-                    <Input value={s.port} onChange={(e) => updateService(s.id, { port: e.target.value })} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Build Command</Label>
-                    <Input value={s.buildCommand} onChange={(e) => updateService(s.id, { buildCommand: e.target.value })} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Start Command</Label>
-                    <Input value={s.startCommand} onChange={(e) => updateService(s.id, { startCommand: e.target.value })} />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Resources</Label>
-                  <div className="flex gap-2">
-                    {RESOURCE_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => updateService(s.id, { resourcePreset: preset.id as DraftService["resourcePreset"] })}
-                        className={`flex-1 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${
-                          s.resourcePreset === preset.id ? "border-primary bg-primary/5" : "border-border"
-                        }`}
-                      >
-                        <p className="font-medium">{preset.name}</p>
-                        <p className="text-muted-foreground">{preset.cpuCores} CPU · {preset.ramMb}MB</p>
-                        <p className="text-muted-foreground">${preset.estimatedMonthlyUsd}/mo</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-border pt-4 text-sm">
+                <span className="font-medium">Estimated cost</span>
+                <span className="font-semibold">{formatCurrency(estimatedCost)}/mo</span>
               </div>
-            ))}
-            <Button variant="outline" size="sm" className="w-fit" onClick={() => setServices((prev) => [...prev, newDraftService({ name: `service-${prev.length + 1}` })])}>
-              <Plus className="h-3.5 w-3.5" /> Add Service
-            </Button>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {step === 2 && (

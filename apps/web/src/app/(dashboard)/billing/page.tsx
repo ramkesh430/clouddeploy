@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CreditCard, ExternalLink } from "lucide-react";
+import { Check, CreditCard, ExternalLink, Receipt } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -98,30 +98,23 @@ export default function BillingPage() {
 
       <Card>
         <CardHeader><CardTitle>Invoices</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="p-4 font-medium">Invoice</th>
-                <th className="p-4 font-medium">Amount</th>
-                <th className="p-4 font-medium">Status</th>
-                <th className="p-4 font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(summary?.invoices ?? []).map((inv) => (
-                <tr key={inv.id} className="border-b border-border/60 last:border-0">
-                  <td className="p-4 font-mono text-xs">{inv.id.slice(0, 12)}</td>
-                  <td className="p-4 text-muted-foreground">{formatCurrency(inv.amountDueCents / 100)}</td>
-                  <td className="p-4"><StatusBadge status={inv.status} /></td>
-                  <td className="p-4 text-muted-foreground">{formatRelativeTime(inv.createdAt)}</td>
-                </tr>
-              ))}
-              {(summary?.invoices ?? []).length === 0 && (
-                <tr><td colSpan={4} className="p-8 text-center text-sm text-muted-foreground">No invoices yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+        <CardContent className="flex flex-col p-0">
+          {(summary?.invoices ?? []).map((inv) => (
+            <div key={inv.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Receipt className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-xs font-medium">{inv.id.slice(0, 12)}</p>
+                <p className="truncate text-xs text-muted-foreground">{formatRelativeTime(inv.createdAt)}</p>
+              </div>
+              <span className="shrink-0 text-sm font-medium">{formatCurrency(inv.amountDueCents / 100)}</span>
+              <StatusBadge status={inv.status} />
+            </div>
+          ))}
+          {(summary?.invoices ?? []).length === 0 && (
+            <p className="p-8 text-center text-sm text-muted-foreground">No invoices yet.</p>
+          )}
         </CardContent>
       </Card>
     </div>

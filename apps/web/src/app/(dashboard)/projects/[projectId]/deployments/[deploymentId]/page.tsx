@@ -6,7 +6,7 @@ import { Check, Loader2, Circle, Search, Download, Copy, Pause, Play, ExternalLi
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { CircularProgress } from "@/components/ui/circular-progress";
 import { StatusBadge } from "@/components/ui/badge";
 import { useDeployment, useRedeploy } from "@/hooks/use-deployments";
 import { useDeploymentSocket } from "@/hooks/use-deployment-socket";
@@ -139,13 +139,18 @@ export default function DeploymentDetailPage() {
         </Card>
 
         <Card>
-          <CardContent className="flex flex-col gap-4 p-4">
-            <div>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-medium">{currentStatus === "LIVE" ? "Deploy Live" : currentStep ?? "Deploying..."}</span>
-                <span className="text-muted-foreground">{progressPct}%</span>
-              </div>
-              <Progress value={progressPct} />
+          <CardContent className="flex flex-col gap-5 p-4">
+            <div className="flex flex-col items-center gap-2 py-2">
+              <CircularProgress
+                value={progressPct}
+                size={112}
+                strokeWidth={9}
+                colorClassName={currentStatus === "FAILED" ? "stroke-destructive" : currentStatus === "LIVE" ? "stroke-success" : "stroke-primary"}
+              >
+                <span className="text-2xl font-bold">{progressPct}%</span>
+              </CircularProgress>
+              <p className="text-sm font-medium">{currentStatus === "LIVE" ? "Deploy Live" : currentStatus === "FAILED" ? "Deployment Failed" : currentStep ?? "Deploying..."}</p>
+              {!isDone && <p className="text-xs text-muted-foreground">This may take a few minutes.</p>}
             </div>
             <div className="flex flex-col gap-1">
               {DEPLOYMENT_PIPELINE.map((s) => {

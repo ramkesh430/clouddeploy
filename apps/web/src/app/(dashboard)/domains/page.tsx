@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, ShieldCheck } from "lucide-react";
+import { Plus, ShieldCheck, Globe } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,43 +89,30 @@ export default function DomainsPage() {
         <Card><CardContent className="p-0"><EmptyState title="No Domains" description="Add a custom domain to one of your projects." /></CardContent></Card>
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="p-4 font-medium">Domain</th>
-                  <th className="p-4 font-medium">Type</th>
-                  <th className="p-4 font-medium">Project</th>
-                  <th className="p-4 font-medium">DNS Status</th>
-                  <th className="p-4 font-medium">SSL</th>
-                  <th className="p-4 font-medium">Added</th>
-                  <th className="p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(domains ?? []).map((d) => (
-                  <tr key={d.id} className="border-b border-border/60 last:border-0">
-                    <td className="p-4 font-medium">{d.hostname}</td>
-                    <td className="p-4 text-muted-foreground">{d.type === "PLATFORM" ? "Platform Domain" : "Custom"}</td>
-                    <td className="p-4 text-muted-foreground">{d.project?.name ?? "—"}</td>
-                    <td className="p-4"><StatusBadge status={d.status} /></td>
-                    <td className="p-4">
-                      {d.ssl?.status === "ACTIVE" ? (
-                        <span className="flex items-center gap-1 text-xs text-success"><ShieldCheck className="h-3.5 w-3.5" /> Active</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-muted-foreground">{formatRelativeTime(d.createdAt)}</td>
-                    <td className="p-4">
-                      {d.status !== "ACTIVE" && (
-                        <Button size="sm" variant="outline" onClick={() => verify.mutate(d.id)} loading={verify.isPending}>Verify</Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent className="flex flex-col p-0">
+            {(domains ?? []).map((d) => (
+              <div key={d.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Globe className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{d.hostname}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {d.type === "PLATFORM" ? "Platform Domain" : "Custom Domain"} · {d.project?.name ?? "—"}
+                  </p>
+                </div>
+                <StatusBadge status={d.status} />
+                {d.ssl?.status === "ACTIVE" ? (
+                  <span className="hidden shrink-0 items-center gap-1 text-xs text-success sm:flex"><ShieldCheck className="h-3.5 w-3.5" /> SSL Active</span>
+                ) : (
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">No SSL</span>
+                )}
+                <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">{formatRelativeTime(d.createdAt)}</span>
+                {d.status !== "ACTIVE" && (
+                  <Button size="sm" variant="outline" className="shrink-0" onClick={() => verify.mutate(d.id)} loading={verify.isPending}>Verify</Button>
+                )}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

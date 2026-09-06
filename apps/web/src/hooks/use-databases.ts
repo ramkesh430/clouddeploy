@@ -26,6 +26,14 @@ export function useDatabases(organizationId: string | null) {
   });
 }
 
+export function useDatabase(databaseId: string | null) {
+  return useQuery({
+    queryKey: ["database", databaseId],
+    queryFn: () => api.get<DatabaseSummary>(`/databases/${databaseId}`),
+    enabled: !!databaseId,
+  });
+}
+
 export function useDatabaseConnection(databaseId: string | null) {
   return useQuery({
     queryKey: ["database-connection", databaseId],

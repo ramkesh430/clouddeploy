@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api-client";
+import { useDatabase } from "@/hooks/use-databases";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -20,10 +19,7 @@ const TABS = [
 export default function DatabaseLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ databaseId: string }>();
   const pathname = usePathname();
-  const { data: database, isLoading } = useQuery({
-    queryKey: ["database", params.databaseId],
-    queryFn: () => api.get<any>(`/databases/${params.databaseId}`),
-  });
+  const { data: database, isLoading } = useDatabase(params.databaseId);
 
   const basePath = `/databases/${params.databaseId}`;
 

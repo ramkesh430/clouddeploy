@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Rocket } from "lucide-react";
 import { useActiveOrganization } from "@/hooks/use-active-organization";
 import { useProjects } from "@/hooks/use-projects";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,31 +41,24 @@ export default function AllDeploymentsPage() {
         <Card><CardContent className="p-0"><EmptyState title="No Deployments Yet" description="Deploy a project to see activity here." /></CardContent></Card>
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="p-4 font-medium">Project</th>
-                  <th className="p-4 font-medium">Branch</th>
-                  <th className="p-4 font-medium">Commit</th>
-                  <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 font-medium">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deployments.map((d) => (
-                  <tr key={d.id} className="border-b border-border/60 last:border-0">
-                    <td className="p-4">
-                      <Link href={`/projects/${d.projectId}/deployments/${d.id}`} className="font-medium hover:text-primary">{d.projectName}</Link>
-                    </td>
-                    <td className="p-4 text-muted-foreground">{d.branch}</td>
-                    <td className="p-4 font-mono text-xs text-muted-foreground">{d.commitSha ?? "—"}</td>
-                    <td className="p-4"><StatusBadge status={d.status} /></td>
-                    <td className="p-4 text-muted-foreground">{formatRelativeTime(d.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent className="flex flex-col p-0">
+            {deployments.map((d) => (
+              <Link
+                key={d.id}
+                href={`/projects/${d.projectId}/deployments/${d.id}`}
+                className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0 hover:bg-accent/40"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Rocket className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{d.projectName}</p>
+                  <p className="truncate text-xs text-muted-foreground">{d.branch} · {d.commitSha?.slice(0, 7) ?? "—"}</p>
+                </div>
+                <StatusBadge status={d.status} />
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{formatRelativeTime(d.createdAt)}</span>
+              </Link>
+            ))}
           </CardContent>
         </Card>
       )}

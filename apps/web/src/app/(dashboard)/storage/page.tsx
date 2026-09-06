@@ -53,15 +53,18 @@ export default function StoragePage() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
-          { label: "Total Storage", value: formatBytes(totalStorage), icon: HardDrive },
-          { label: "Buckets", value: buckets?.length ?? 0, icon: HardDrive },
-          { label: "Files", value: totalFiles, icon: Files },
-          { label: "Bandwidth", value: "—", icon: Files },
+          { label: "Total Storage", value: formatBytes(totalStorage), icon: HardDrive, color: "text-primary bg-primary/10" },
+          { label: "Buckets", value: buckets?.length ?? 0, icon: HardDrive, color: "text-secondary bg-secondary/10" },
+          { label: "Files", value: totalFiles, icon: Files, color: "text-success bg-success/10" },
+          { label: "Bandwidth", value: "—", icon: Files, color: "text-warning bg-warning/10" },
         ].map((c) => (
           <Card key={c.label}>
-            <CardContent className="flex flex-col gap-2 p-4">
+            <CardContent className="flex flex-col gap-3 p-5">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${c.color}`}>
+                <c.icon className="h-5 w-5" />
+              </div>
+              <span className="text-2xl font-bold tracking-tight">{c.value}</span>
               <span className="text-xs text-muted-foreground">{c.label}</span>
-              <span className="text-xl font-semibold">{c.value}</span>
             </CardContent>
           </Card>
         ))}

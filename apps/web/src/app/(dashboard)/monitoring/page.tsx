@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Bell } from "lucide-react";
 import { ComingSoon } from "@/components/dashboard/coming-soon";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -128,49 +128,35 @@ function AlertRules() {
       </div>
 
       <Card>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="p-4 font-medium">Database</th>
-                <th className="p-4 font-medium">Condition</th>
-                <th className="p-4 font-medium">Cooldown</th>
-                <th className="p-4 font-medium">Last Triggered</th>
-                <th className="p-4 font-medium">Enabled</th>
-                <th className="p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(rules ?? []).map((r) => (
-                <tr key={r.id} className="border-b border-border/60 last:border-0">
-                  <td className="p-4 font-medium">{databaseName(r.databaseId)}</td>
-                  <td className="p-4">
-                    <Badge variant="outline">
-                      {METRICS.find((m) => m.value === r.metric)?.label ?? r.metric} {r.comparator === "GREATER_THAN" ? ">" : "<"} {r.threshold}
-                    </Badge>
-                  </td>
-                  <td className="p-4 text-muted-foreground">{r.cooldownMinutes}m</td>
-                  <td className="p-4 text-muted-foreground">{r.lastTriggeredAt ? formatRelativeTime(r.lastTriggeredAt) : "Never"}</td>
-                  <td className="p-4">
-                    <button
-                      onClick={() => setEnabled.mutate({ id: r.id, enabled: !r.enabled })}
-                      className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${r.enabled ? "bg-primary" : "bg-muted"}`}
-                    >
-                      <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${r.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                    </button>
-                  </td>
-                  <td className="p-4">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteRule.mutate(r.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {(rules ?? []).length === 0 && (
-                <tr><td colSpan={6} className="p-8 text-center text-sm text-muted-foreground">No alert rules yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+        <CardContent className="flex flex-col p-0">
+          {(rules ?? []).map((r) => (
+            <div key={r.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Bell className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{databaseName(r.databaseId)}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {r.lastTriggeredAt ? `Last triggered ${formatRelativeTime(r.lastTriggeredAt)}` : "Never triggered"} · cooldown {r.cooldownMinutes}m
+                </p>
+              </div>
+              <Badge variant="outline" className="hidden sm:inline-flex">
+                {METRICS.find((m) => m.value === r.metric)?.label ?? r.metric} {r.comparator === "GREATER_THAN" ? ">" : "<"} {r.threshold}
+              </Badge>
+              <button
+                onClick={() => setEnabled.mutate({ id: r.id, enabled: !r.enabled })}
+                className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${r.enabled ? "bg-primary" : "bg-muted"}`}
+              >
+                <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${r.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+              </button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => deleteRule.mutate(r.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+          {(rules ?? []).length === 0 && (
+            <p className="p-8 text-center text-sm text-muted-foreground">No alert rules yet.</p>
+          )}
         </CardContent>
       </Card>
     </div>

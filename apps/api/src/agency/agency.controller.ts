@@ -4,6 +4,7 @@ import { OrgRole } from "@clouddeploy/database";
 import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
+import { withDefault } from "../common/utils/pagination.util";
 import { AgencyService } from "./agency.service";
 import { AssignClientProjectDto, CreateAgencyClientDto, UpdateAgencyClientDto, UpdateBrandingDto, UpdatePortalAccessDto } from "./dto/agency.dto";
 
@@ -19,7 +20,7 @@ export class AgencyController {
 
   @Get("clients")
   clients(@Query("organizationId") organizationId: string, @Query("limit") limit?: number, @Query("cursor") cursor?: string) {
-    return this.agency.listClients(organizationId, limit, cursor);
+    return this.agency.listClients(organizationId, withDefault(limit, 50), cursor);
   }
 
   @Post("clients")

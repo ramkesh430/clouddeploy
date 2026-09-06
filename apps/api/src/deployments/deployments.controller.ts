@@ -4,6 +4,7 @@ import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser, RequestUser } from "../common/decorators/current-user.decorator";
+import { withDefault } from "../common/utils/pagination.util";
 import { DeploymentsService } from "./deployments.service";
 import { CreateDeploymentDto } from "./dto/create-deployment.dto";
 import { OrgRole } from "@clouddeploy/database";
@@ -37,7 +38,7 @@ export class DeploymentsController {
   @Get(":deploymentId/logs")
   @ApiOperation({ summary: "List deployment log entries for polling or SDK streaming" })
   logs(@Param("deploymentId") deploymentId: string, @Query("after") after?: string, @Query("limit") limit?: number) {
-    return this.deploymentsService.logs(deploymentId, after, limit);
+    return this.deploymentsService.logs(deploymentId, after, withDefault(limit, 500));
   }
 
   @Post(":deploymentId/redeploy")

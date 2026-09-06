@@ -40,7 +40,7 @@ export class AgencyService {
     };
   }
 
-  async listClients(organizationId: string, limit = 50, cursor?: string) {
+  async listClients(organizationId: string, limit: number, cursor?: string) {
     const rows = await this.prisma.agencyClient.findMany({
       where: { organizationId },
       include: { _count: { select: { projects: true } } },

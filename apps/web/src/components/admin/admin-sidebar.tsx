@@ -2,11 +2,75 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, AlertTriangle, BarChart3, Boxes, Building2, CircleDollarSign, CloudCog, Container, Database, FileClock, FolderKanban, Globe, HardDrive, Headphones, KeyRound, LayoutDashboard, MapPin, Server, Users, Wrench } from "lucide-react";
+import { Cloud, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store/auth-store";
+import { ADMIN_NAV_SECTIONS } from "./admin-nav-index";
 
-const links = [
-  ["/admin", "Dashboard", LayoutDashboard], ["/admin/users", "Users", Users], ["/admin/organizations", "Organizations", Building2], ["/admin/projects", "Projects", FolderKanban], ["/admin/deployments", "Deployments", CloudCog], ["/admin/containers", "Containers", Container], ["/admin/databases", "Databases", Database], ["/admin/domains", "Domains", Globe], ["/admin/regions", "Regions", MapPin], ["/admin/servers", "Servers", Server], ["/admin/build-workers", "Build workers", Wrench], ["/admin/runtime-nodes", "Runtime nodes", Activity], ["/admin/database-nodes", "Database nodes", Database], ["/admin/storage-nodes", "Storage nodes", HardDrive], ["/admin/infrastructure", "Capacity", Boxes], ["/admin/plans", "Plans", CircleDollarSign], ["/admin/subscriptions", "Subscriptions", KeyRound], ["/admin/transactions", "Transactions", CircleDollarSign], ["/admin/usage", "Usage", BarChart3], ["/admin/support", "Support", Headphones], ["/admin/abuse", "Abuse", AlertTriangle], ["/admin/status", "Status", Activity], ["/admin/analytics", "Analytics", BarChart3], ["/admin/system-logs", "System logs", FileClock], ["/admin/security", "Security", KeyRound],
-] as const;
+export function AdminSidebar() {
+  const pathname = usePathname();
+  const user = useAuthStore((s) => s.user);
 
-export function AdminSidebar() { const pathname = usePathname(); return <aside className="hidden w-64 shrink-0 flex-col bg-slate-950 text-slate-100 md:flex"><Link href="/admin" className="flex h-16 items-center gap-2 border-b border-white/10 px-5 font-semibold"><Boxes className="h-5 w-5 text-blue-400" /> CloudDeploy Admin</Link><nav className="flex-1 space-y-1 overflow-y-auto p-3">{links.map(([href, label, Icon]) => { const active = href === "/admin" ? pathname === href : pathname.startsWith(href); return <Link href={href} key={href} className={cn("flex items-center gap-2.5 rounded-md px-3 py-2 text-sm", active ? "bg-blue-500/20 text-blue-200" : "text-slate-400 hover:bg-white/5 hover:text-white")}><Icon className="h-4 w-4" />{label}</Link>; })}</nav><Link href="/dashboard" className="border-t border-white/10 p-4 text-sm text-slate-400 hover:text-white">← Customer dashboard</Link></aside>; }
+  return (
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] border-r border-slate-800 bg-[#08111d] lg:flex lg:flex-col">
+      <Link href="/admin" className="flex h-20 items-center gap-3 px-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600">
+          <Cloud className="h-5 w-5 text-white" />
+        </div>
+        <span className="text-lg font-semibold text-white">CloudDeploy</span>
+      </Link>
+
+      <div className="px-3">
+        <Link
+          href="/admin"
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors",
+            pathname === "/admin" ? "bg-blue-600/80 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white",
+          )}
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Dashboard
+        </Link>
+      </div>
+
+      <nav className="mt-4 flex-1 overflow-y-auto px-3 pb-6">
+        {ADMIN_NAV_SECTIONS.map((section) => (
+          <div key={section.title} className="mb-5">
+            <p className="mb-2 px-3 text-[10px] font-semibold tracking-widest text-slate-600">{section.title}</p>
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                      active ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <div className="border-t border-slate-800 p-4">
+        <Link href="/dashboard" className="flex w-full items-center gap-3 rounded-xl p-2 hover:bg-slate-800">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-600 font-semibold text-white">
+            {(user?.fullName ?? "A").slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="truncate text-sm font-medium text-white">{user?.fullName ?? "Admin User"}</p>
+            <p className="truncate text-xs text-slate-500">← Customer dashboard</p>
+          </div>
+        </Link>
+      </div>
+    </aside>
+  );
+}

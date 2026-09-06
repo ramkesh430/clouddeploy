@@ -9,7 +9,7 @@ export class StatusService {
 
   async publicStatus() {
     const [services, incidents] = await Promise.all([
-      this.prisma.platformService.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+      this.servicesWithUptime(),
       this.prisma.incident.findMany({
         where: { OR: [{ status: { not: "RESOLVED" } }, { resolvedAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } }] },
         include: { services: { include: { service: true } }, updates: { orderBy: { createdAt: "desc" } } },
@@ -20,7 +20,37 @@ export class StatusService {
     return { overall: operational ? "OPERATIONAL" : this.worstStatus(services.map((service) => service.status)), services, incidents, generatedAt: new Date() };
   }
 
-  services() { return this.prisma.platformService.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }); }
+  services() { return this.servicesWithUptime(); }
+
+  /** Every platform service plus a real uptimePct30d, computed from actual
+   * Incident start/resolve timestamps rather than a hardcoded "99.99%" —
+   * a service with no incidents in the window is genuinely 100%, one with
+   * an unresolved incident right now is genuinely below 100%. */
+  private async servicesWithUptime() {
+    const windowMs = 30 * 24 * 60 * 60 * 1000;
+    const windowStart = new Date(Date.now() - windowMs);
+    const [services, incidentLinks] = await Promise.all([
+      this.prisma.platformService.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+      this.prisma.incidentService.findMany({
+        where: { incident: { OR: [{ resolvedAt: null }, { resolvedAt: { gte: windowStart } }] } },
+        include: { incident: { select: { startedAt: true, resolvedAt: true } } },
+      }),
+    ]);
+
+    const downtimeByService = new Map<string, number>();
+    const now = Date.now();
+    for (const link of incidentLinks) {
+      const start = Math.max(link.incident.startedAt.getTime(), windowStart.getTime());
+      const end = Math.min(link.incident.resolvedAt?.getTime() ?? now, now);
+      if (end > start) downtimeByService.set(link.serviceId, (downtimeByService.get(link.serviceId) ?? 0) + (end - start));
+    }
+
+    return services.map((service) => {
+      const downtimeMs = downtimeByService.get(service.id) ?? 0;
+      const uptimePct30d = Math.max(0, Math.min(100, (1 - downtimeMs / windowMs) * 100));
+      return { ...service, uptimePct30d: Math.round(uptimePct30d * 100) / 100 };
+    });
+  }
 
   updateService(serviceId: string, dto: UpdatePlatformServiceDto) { return this.prisma.platformService.update({ where: { id: serviceId }, data: dto }); }
 

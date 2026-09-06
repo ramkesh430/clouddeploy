@@ -27,6 +27,7 @@ import { useAuthStore } from "@/lib/store/auth-store";
 import { useDashboardSummary, type DashboardSummary } from "@/hooks/use-dashboard";
 import { formatBytes, formatCurrency, formatRelativeTime } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 
 const statCards = [
   { key: "totalProjects", label: "Total Projects", icon: FolderKanban, color: "text-primary bg-primary/10", format: (v: number) => v },
@@ -67,6 +68,8 @@ export default function DashboardPage() {
           </Link>
         </Button>
       </div>
+
+      {data && <OnboardingChecklist summary={data} />}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {statCards.map((card) => (

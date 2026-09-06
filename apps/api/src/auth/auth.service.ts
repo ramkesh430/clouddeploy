@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import { decryptSecretWithFallback, hashPassword, verifyPassword, verifyTotp } from "@clouddeploy/security";
 import { JwtPayload, AuthTokens } from "@clouddeploy/types";
 import { PrismaService } from "../prisma/prisma.service";
+import { EmailService } from "../email/email.service";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 
@@ -24,7 +25,24 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly email: EmailService,
   ) {}
+
+  private webAppUrl(): string {
+    return this.config.get<string>("WEB_APP_URL") ?? "http://localhost:3000";
+  }
+
+  /** Any organization invite sitting in the "INVITED" state for this email
+   * — sent before this account existed, or before this login — becomes a
+   * real membership the moment the person authenticates. Nothing else in
+   * the codebase ever flips INVITED to ACTIVE, so without this an invited
+   * teammate could accept forever and never actually gain access. */
+  private async activatePendingInvites(userId: string, email: string) {
+    await this.prisma.organizationMember.updateMany({
+      where: { email: email.toLowerCase(), status: "INVITED" },
+      data: { userId, status: "ACTIVE", joinedAt: new Date() },
+    });
+  }
 
   async register(dto: RegisterDto) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
@@ -50,13 +68,18 @@ export class AuthService {
       },
     });
 
-    // In production this dispatches a transactional email. Logged here so
-    // the flow is testable end-to-end without an email provider configured.
+    const verifyUrl = `${this.webAppUrl()}/verify-email?token=${verificationToken.token}`;
+    void this.email.send(
+      user.email,
+      "Verify your CloudDeploy email",
+      `<p>Hi ${user.fullName},</p><p>Confirm your email address to finish setting up your CloudDeploy account.</p><p><a href="${verifyUrl}">Verify email</a></p><p>This link expires in 24 hours.</p>`,
+    );
+    await this.activatePendingInvites(user.id, user.email);
+
     const tokens = await this.issueTokens(user.id, user.email);
     return {
       user: this.toPublicUser(user),
       tokens,
-      emailVerificationToken: verificationToken.token,
     };
   }
 
@@ -105,6 +128,7 @@ export class AuthService {
 
     await this.recordLogin(user.id, meta, true, suspicious, suspicious ? "NEW_IP_ADDRESS" : undefined);
     if (suspicious) await this.notifySuspiciousLogin(user.id, meta.ipAddress);
+    await this.activatePendingInvites(user.id, user.email);
 
     const tokens = await this.issueTokens(user.id, user.email, meta);
     return { user: this.toPublicUser(user), tokens };
@@ -184,6 +208,72 @@ export class AuthService {
     return { ...this.toPublicUser(user), organizations: user.organizationMembers.map((membership) => ({ ...membership.organization, role: membership.role })) };
   }
 
+  /** A genuine, if modest, self-service export — profile, organization
+   * memberships, projects, recent deployments, and support tickets. Not
+   * every table in the schema, but enough that "export my data" isn't a
+   * placeholder. */
+  async exportOwnData(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, email: true, fullName: true, avatarUrl: true, emailVerifiedAt: true, createdAt: true,
+        organizationMembers: {
+          where: { status: "ACTIVE" },
+          select: {
+            role: true,
+            joinedAt: true,
+            organization: {
+              select: {
+                id: true, name: true, slug: true, createdAt: true,
+                projects: { where: { deletedAt: null }, select: { id: true, name: true, slug: true, status: true, region: true, createdAt: true } },
+              },
+            },
+          },
+        },
+        supportTickets: { select: { id: true, subject: true, status: true, category: true, createdAt: true } },
+        apiKeys: { where: { revokedAt: null }, select: { id: true, name: true, createdAt: true, lastUsedAt: true } },
+      },
+    });
+    if (!user) throw new NotFoundException("Account not found");
+    const { organizationMembers, ...profile } = user;
+    return {
+      exportedAt: new Date().toISOString(),
+      profile,
+      organizations: organizationMembers.map((m) => ({ role: m.role, joinedAt: m.joinedAt, ...m.organization })),
+    };
+  }
+
+  /** Self-service account deletion. Refuses if the caller owns an
+   * organization other people still depend on — deleting the account
+   * would silently strand their teammates' access — but a solo workspace
+   * (no other active members) is soft-deleted right along with the
+   * account, since nobody else could reach it anyway. */
+  async deleteOwnAccount(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
+      throw new UnauthorizedException("Incorrect password");
+    }
+
+    const ownedOrgs = await this.prisma.organizationMember.findMany({
+      where: { userId, role: "OWNER", status: "ACTIVE" },
+      include: { organization: { include: { _count: { select: { members: { where: { status: "ACTIVE" } } } } } } },
+    });
+    const blocking = ownedOrgs.filter((m) => m.organization._count.members > 1);
+    if (blocking.length > 0) {
+      throw new BadRequestException(
+        `Transfer ownership of ${blocking.map((m) => m.organization.name).join(", ")} to another member before deleting your account.`,
+      );
+    }
+
+    const soloOrgIds = ownedOrgs.map((m) => m.organizationId);
+    await this.prisma.$transaction([
+      ...(soloOrgIds.length ? [this.prisma.organization.updateMany({ where: { id: { in: soloOrgIds } }, data: { deletedAt: new Date() } })] : []),
+      this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+      this.prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date(), email: `deleted-${userId}@clouddeploy.invalid` } }),
+    ]);
+    return { deleted: true };
+  }
+
   async verifyEmail(token: string) {
     const record = await this.prisma.verificationToken.findUnique({ where: { token } });
     if (!record || record.type !== "EMAIL_VERIFICATION" || record.usedAt || record.expiresAt < new Date()) {
@@ -209,7 +299,13 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
-    return { sent: true, resetToken: token.token };
+    const resetUrl = `${this.webAppUrl()}/reset-password?token=${token.token}`;
+    void this.email.send(
+      user.email,
+      "Reset your CloudDeploy password",
+      `<p>Hi ${user.fullName},</p><p>Someone requested a password reset for this account. If this was you, choose a new password:</p><p><a href="${resetUrl}">Reset password</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+    );
+    return { sent: true };
   }
 
   async resetPassword(token: string, newPassword: string) {

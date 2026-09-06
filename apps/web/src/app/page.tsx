@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -21,6 +22,23 @@ import { MarketingHeader } from "@/components/marketing/header";
 import { MarketingFooter } from "@/components/marketing/footer";
 import { DashboardPreview } from "@/components/marketing/dashboard-preview";
 import { CTA } from "@/components/marketing/cta";
+
+export const metadata: Metadata = {
+  title: "CloudDeploy — Deploy Your Entire Application",
+  description:
+    "Frontend, backend, database, storage, domains and SSL — all from one cloud platform. Connect GitHub, detect your stack, and deploy your full application in minutes.",
+  alternates: { canonical: "/" },
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "CloudDeploy",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Web",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  description: "A full-stack cloud hosting platform for frontend, backend, databases, storage, and domains.",
+};
 
 const stack = [
   { icon: Globe, title: "Frontend", desc: "React, Next.js, Vue" },
@@ -55,6 +73,7 @@ const flowSteps = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <MarketingHeader />
 
       <section className="bg-sidebar text-sidebar-foreground">

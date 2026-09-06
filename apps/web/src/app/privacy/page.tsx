@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { DraftNotice } from "@/components/legal/draft-notice";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy — CloudDeploy",
+  description: "How CloudDeploy collects, uses, and protects your data.",
+  alternates: { canonical: "/privacy" },
+  robots: { index: false, follow: true },
+};
 
 const sections = [
   {

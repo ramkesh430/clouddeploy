@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, Res, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query, Req, Res, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { Throttle } from "@nestjs/throttler";
@@ -65,6 +65,20 @@ export class AuthController {
   @ApiOperation({ summary: "Return the authenticated user/API-key principal and workspaces" })
   me(@CurrentUser() user: RequestUser) {
     return this.authService.me(user.id);
+  }
+
+  @Get("me/export")
+  @UseGuards(AnyAuthGuard)
+  @ApiOperation({ summary: "Export the authenticated user's own data" })
+  exportData(@CurrentUser() user: RequestUser) {
+    return this.authService.exportOwnData(user.id);
+  }
+
+  @Delete("me")
+  @UseGuards(AnyAuthGuard)
+  @ApiOperation({ summary: "Permanently delete the authenticated user's own account" })
+  deleteOwnAccount(@CurrentUser() user: RequestUser, @Body("password") password: string) {
+    return this.authService.deleteOwnAccount(user.id, password);
   }
 
   @Get("verify-email")

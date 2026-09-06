@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   BarChart3,
   Boxes,
@@ -20,6 +21,12 @@ import {
 import { MarketingHeader } from "@/components/marketing/header";
 import { MarketingFooter } from "@/components/marketing/footer";
 import { Hero } from "@/components/marketing/hero";
+
+export const metadata: Metadata = {
+  title: "Features — CloudDeploy",
+  description: "GitHub integration, one-click deploys, managed databases and object storage, custom domains, team collaboration, API keys and webhooks, and an AI deployment assistant.",
+  alternates: { canonical: "/features" },
+};
 import { CTA } from "@/components/marketing/cta";
 import { Badge } from "@/components/ui/badge";
 import { toneClass } from "@/components/marketing/tone";

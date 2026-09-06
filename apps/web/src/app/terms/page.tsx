@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { DraftNotice } from "@/components/legal/draft-notice";
+
+export const metadata: Metadata = {
+  title: "Terms of Service — CloudDeploy",
+  description: "The terms that govern your use of CloudDeploy.",
+  alternates: { canonical: "/terms" },
+  robots: { index: false, follow: true },
+};
 
 const sections = [
   {

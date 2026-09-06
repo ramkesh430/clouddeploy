@@ -4,9 +4,10 @@ import { OrganizationsService } from "./organizations.service";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { UsageModule } from "../usage/usage.module";
 import { ActivityLogModule } from "../activity-log/activity-log.module";
+import { EmailModule } from "../email/email.module";
 
 @Module({
-  imports: [UsageModule, ActivityLogModule],
+  imports: [UsageModule, ActivityLogModule, EmailModule],
   controllers: [OrganizationsController],
   providers: [OrganizationsService, RolesGuard],
   exports: [OrganizationsService],

@@ -14,6 +14,7 @@ import {
 import { useActiveOrganization } from "@/hooks/use-active-organization";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { useUnreadCount } from "@/hooks/use-notifications";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function TopNav() {
   const { organizations, active } = useActiveOrganization();
@@ -50,6 +51,7 @@ export function TopNav() {
       </div>
 
       <div className="flex items-center gap-2">
+        <ThemeToggle />
         <Button variant="ghost" size="icon" asChild>
           <Link href="/docs" aria-label="Documentation">
             <BookOpen className="h-4 w-4" />

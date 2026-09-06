@@ -8,11 +8,13 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
 import { RolesGuard } from "./guards/roles.guard";
 import { AnyAuthGuard } from "./guards/any-auth.guard";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { EmailModule } from "../email/email.module";
 
 @Global()
 @Module({
   imports: [
     PassportModule,
+    EmailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

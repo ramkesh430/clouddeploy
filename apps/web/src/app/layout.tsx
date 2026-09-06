@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -33,6 +34,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Runs before hydration so the stored/system theme applies before
+            first paint — without this, every load would flash light mode
+            for users who chose dark. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

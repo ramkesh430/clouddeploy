@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   BarChart3,
   Code2,
@@ -15,6 +16,12 @@ import { MarketingFooter } from "@/components/marketing/footer";
 import { Hero } from "@/components/marketing/hero";
 import { CTA } from "@/components/marketing/cta";
 import { toneClass } from "@/components/marketing/tone";
+
+export const metadata: Metadata = {
+  title: "Product — CloudDeploy",
+  description: "One platform for your entire stack: full-stack deployments, managed databases, object storage, custom domains with SSL, and real-time monitoring.",
+  alternates: { canonical: "/product" },
+};
 
 const blocks = [
   { icon: Zap, title: "Full Stack Deployments", desc: "Deploy frontend, backend, database and more — with one click." },

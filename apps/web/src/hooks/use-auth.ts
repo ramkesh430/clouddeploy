@@ -82,6 +82,26 @@ export function useResetPassword() {
   });
 }
 
+export function useExportData() {
+  return useMutation({
+    mutationFn: () => api.get<Record<string, unknown>>("/auth/me/export"),
+    onError: (err) => toast({ title: "Export failed", description: err instanceof ApiError ? err.message : "Something went wrong", variant: "destructive" }),
+  });
+}
+
+export function useDeleteAccount() {
+  const router = useRouter();
+  return useMutation({
+    mutationFn: (password: string) => api.delete("/auth/me", { body: { password } }),
+    onSuccess: () => {
+      useAuthStore.getState().clear();
+      toast({ title: "Account deleted", description: "Your account has been permanently deleted." });
+      router.push("/login");
+    },
+    onError: (err) => toast({ title: "Couldn't delete account", description: err instanceof ApiError ? err.message : "Something went wrong", variant: "destructive" }),
+  });
+}
+
 export function useLogout() {
   const router = useRouter();
   return useMutation({

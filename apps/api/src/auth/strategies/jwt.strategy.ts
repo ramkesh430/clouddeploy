@@ -26,6 +26,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     if (!user || user.deletedAt || user.isSuspended) {
       throw new UnauthorizedException("Account is not active");
     }
-    return { id: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin };
+    return { id: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin, twoFactorEnabled: user.twoFactorEnabled };
   }
 }

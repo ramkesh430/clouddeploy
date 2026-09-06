@@ -1,6 +1,9 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -144,6 +147,28 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     return { loggedOut: true };
+  }
+
+  /** Issues a short-lived access token for `targetUserId` on a platform
+   * admin's behalf — no refresh token or session row, since this isn't a
+   * real login. Deliberately refuses to impersonate another admin (limits
+   * the blast radius of a compromised admin account) or a suspended
+   * account, and always leaves an audit trail. */
+  async impersonate(adminId: string, targetUserId: string) {
+    if (adminId === targetUserId) throw new BadRequestException("You are already signed in as this account");
+    const target = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!target || target.deletedAt) throw new NotFoundException("User not found");
+    if (target.isPlatformAdmin) throw new ForbiddenException("Cannot impersonate another platform administrator");
+    if (target.isSuspended) throw new ForbiddenException("Cannot impersonate a suspended account");
+
+    const accessToken = await this.jwt.signAsync(
+      { sub: target.id, email: target.email, type: "access" } satisfies JwtPayload,
+      { secret: this.config.getOrThrow<string>("JWT_SECRET"), expiresIn: "10m" },
+    );
+    await this.prisma.auditLog.create({
+      data: { userId: adminId, action: "user.impersonate", resourceType: "User", resourceId: target.id, newValue: { targetEmail: target.email } },
+    });
+    return { user: this.toPublicUser(target), accessToken, expiresIn: 600 };
   }
 
   async me(userId: string) {

@@ -29,13 +29,17 @@ async function routeAfterAuth(router: ReturnType<typeof useRouter>) {
 export function useLogin() {
   const router = useRouter();
   return useMutation({
-    mutationFn: (input: { email: string; password: string }) => api.post<AuthResponse>("/auth/login", input),
+    mutationFn: (input: { email: string; password: string; otpCode?: string }) => api.post<AuthResponse>("/auth/login", input),
     onSuccess: async (data) => {
       useAuthStore.getState().setSession(data.user, data.accessToken);
       toast({ title: "Welcome back", description: `Signed in as ${data.user.email}`, variant: "success" });
       await routeAfterAuth(router);
     },
     onError: (err) => {
+      // "Two-factor code required"/"Invalid two-factor code" are handled
+      // inline by the login form (it reveals the code field and resubmits)
+      // rather than as a toast — every other login failure still toasts.
+      if (err instanceof ApiError && err.message.toLowerCase().includes("two-factor")) return;
       toast({ title: "Login failed", description: err instanceof ApiError ? err.message : "Something went wrong", variant: "destructive" });
     },
   });

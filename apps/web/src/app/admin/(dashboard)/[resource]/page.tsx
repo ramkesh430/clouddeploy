@@ -10,7 +10,6 @@ interface ResourceConfig {
 }
 
 const resources: Record<string, ResourceConfig> = {
-  users: table("Users", "Accounts, access posture, and suspension state.", "/admin/users", [["email", "Email"], ["fullName", "Name"], ["isPlatformAdmin", "Admin"], ["isSuspended", "Suspended"], ["twoFactorEnabled", "2FA"], ["createdAt", "Created"]]),
   organizations: table(
     "Organizations",
     "Tenant subscriptions and resource counts.",
@@ -63,7 +62,7 @@ const resources: Record<string, ResourceConfig> = {
     {
       createFields: [
         { key: "organizationId", label: "Organization", type: "select", required: true, dynamicSource: "organizations" },
-        { key: "projectId", label: "Project ID", type: "text", required: true, placeholder: "cmt..." },
+        { key: "projectId", label: "Project", type: "select", required: true, dynamicSource: "projects", dependsOn: "organizationId" },
         { key: "hostname", label: "Hostname", type: "text", required: true, placeholder: "app.example.com" },
         { key: "type", label: "Type", type: "select", options: enumOptions(["CUSTOM", "PLATFORM"]) },
         { key: "environment", label: "Environment", type: "select", options: enumOptions(["PRODUCTION", "PREVIEW", "DEVELOPMENT"]) },
@@ -105,11 +104,23 @@ const resources: Record<string, ResourceConfig> = {
       canDelete: true,
     },
   ),
-  subscriptions: table("Subscriptions", "Recurring commercial relationships.", "/admin/subscriptions", [["organization.name", "Organization"], ["plan.name", "Plan"], ["status", "Status"], ["billingPeriod", "Period"], ["currentPeriodEnd", "Renews"], ["cancelAtPeriodEnd", "Cancels"]]),
+  subscriptions: table(
+    "Subscriptions",
+    "Recurring commercial relationships.",
+    "/admin/subscriptions",
+    [["organization.name", "Organization"], ["plan.name", "Plan"], ["status", "Status"], ["billingPeriod", "Period"], ["currentPeriodEnd", "Renews"], ["cancelAtPeriodEnd", "Cancels"]],
+    {
+      editFields: [
+        { key: "planId", label: "Plan", type: "select", dynamicSource: "plans" },
+        { key: "status", label: "Status", type: "select", options: enumOptions(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "INCOMPLETE"]) },
+      ],
+    },
+  ),
   transactions: table("Transactions", "Payment outcomes and provider references.", "/admin/transactions", [["invoice.organization.name", "Organization"], ["provider", "Provider"], ["providerPaymentId", "Reference"], ["status", "Status"], ["amountCents", "Amount ¢"], ["createdAt", "Created"]]),
   usage: table("Usage", "Metered consumption used for billing and capacity planning.", "/admin/usage", [["organization.name", "Organization"], ["metricType", "Metric"], ["quantity", "Quantity"], ["unit", "Unit"], ["periodStart", "Period start"], ["periodEnd", "Period end"]]),
-  support: table("Support tickets", "Customer issues, priority, assignment, and response state.", "/admin/support/tickets", [["subject", "Subject"], ["user.email", "Customer"], ["category", "Category"], ["priority", "Priority"], ["status", "Status"], ["assignedAdmin.fullName", "Assigned"], ["_count.messages", "Messages"]]),
   abuse: table("Abuse and risk events", "Detected risk signals and human review workflow.", "/admin/abuse/risk-events", [["type", "Risk"], ["severity", "Severity"], ["status", "Status"], ["organization.name", "Organization"], ["project.name", "Project"], ["detectedAt", "Detected"]]),
+  "alert-rules": table("Alert rules", "Customer-configured monitoring thresholds, for support and debugging visibility.", "/admin/alert-rules", [["organization.name", "Organization"], ["metric", "Metric"], ["comparator", "Comparator"], ["threshold", "Threshold"], ["enabled", "Enabled"], ["lastTriggeredAt", "Last triggered"]]),
+  webhooks: table("Webhooks", "Customer-configured delivery endpoints, for support and debugging visibility.", "/admin/webhooks", [["organization.name", "Organization"], ["url", "URL"], ["events", "Events"], ["isActive", "Active"], ["_count.deliveries", "Deliveries"], ["createdAt", "Created"]]),
   analytics: table("Platform analytics", "Commercial and workload growth for the last 30 days.", "/admin/analytics", [["mrrCents", "MRR ¢"], ["arrCents", "ARR ¢"], ["churnPct", "Churn %"], ["newUsers", "New users"], ["activeOrganizations", "Active orgs"], ["failedDeploymentRatePct", "Failure %"], ["averageBuildDurationMs", "Avg build ms"]]),
   "system-logs": table("System logs", "Tenant-aware control-plane audit history.", "/admin/system-logs", [["action", "Action"], ["resourceType", "Resource"], ["resourceId", "Resource ID"], ["user.email", "Actor"], ["organization.name", "Organization"], ["ipAddress", "IP"], ["createdAt", "Created"]]),
   security: table("Security posture", "2FA, login risk, API key controls, SSO, and secret access.", "/admin/security", [["twoFactorUsers", "2FA users"], ["suspiciousLogins", "Suspicious logins"], ["activeApiKeys", "Active API keys"], ["ipRestrictedKeys", "IP restricted"], ["ssoOrganizations", "SSO enforced"], ["recentSecretAccess", "Recent secret access"]]),

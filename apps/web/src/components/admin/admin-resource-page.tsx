@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api-client";
 import { useAdminResource } from "@/hooks/use-phase3";
 import { ResourceCrudDialog, type FieldValue, type ResourceField } from "@/components/admin/resource-crud-dialog";
@@ -20,16 +21,30 @@ export interface ResourceCrudConfig {
   createEndpoint?: string;
 }
 
+const PAGE_SIZE = 50;
+
 export function AdminResourcePage({ title, description, endpoint, columns, crud }: { title: string; description: string; endpoint: string; columns: AdminColumn[]; crud?: ResourceCrudConfig }) {
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useAdminResource<unknown>(endpoint);
-  const rows = Array.isArray(data) ? data : data && typeof data === "object" && "data" in data ? (data as { data: unknown[] }).data : data ? [data] : [];
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [search, setSearch] = useState("");
+  const fetchUrl = `${endpoint}${endpoint.includes("?") ? "&" : "?"}limit=${limit}`;
+  const { data, isLoading, error } = useAdminResource<unknown>(fetchUrl);
+  const allRows = useMemo(
+    () => (Array.isArray(data) ? data : data && typeof data === "object" && "data" in data ? (data as { data: unknown[] }).data : data ? [data] : []),
+    [data],
+  );
+  const rows = useMemo(() => {
+    if (!search.trim()) return allRows;
+    const needle = search.trim().toLowerCase();
+    return allRows.filter((row) => columns.some((column) => searchableText(valueAt(row, column.key)).includes(needle)));
+  }, [allRows, search, columns]);
+  const canLoadMore = allRows.length >= limit;
 
   const [dialog, setDialog] = useState<{ mode: "create" | "edit"; row?: Record<string, unknown> } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ["admin", endpoint] });
+    queryClient.invalidateQueries({ queryKey: ["admin", fetchUrl] });
   }
 
   const createMutation = useMutation({
@@ -53,6 +68,18 @@ export function AdminResourcePage({ title, description, endpoint, columns, crud 
     if (window.confirm(`Delete "${label}"? This cannot be undone.`)) deleteMutation.mutate(String(row.id));
   }
 
+  function exportCsv() {
+    const header = columns.map((c) => csvCell(c.label)).join(",");
+    const lines = rows.map((row) => columns.map((c) => csvCell(searchableText(valueAt(row, c.key)))).join(","));
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.toLowerCase().replace(/\s+/g, "-")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const showActions = !!(crud?.editFields || crud?.canDelete);
 
   return (
@@ -71,9 +98,15 @@ export function AdminResourcePage({ title, description, endpoint, columns, crud 
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>{title}</CardTitle>
-            <Badge variant="outline">{rows.length} records</Badge>
+            <div className="flex items-center gap-2">
+              <Input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 w-48" />
+              <Button size="sm" variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
+                <Download className="h-3.5 w-3.5" /> CSV
+              </Button>
+              <Badge variant="outline">{rows.length} records</Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
@@ -114,6 +147,13 @@ export function AdminResourcePage({ title, description, endpoint, columns, crud 
               </tbody>
             </table>
           )}
+          {!isLoading && !error && canLoadMore && !search && (
+            <div className="flex justify-center border-t p-4">
+              <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE_SIZE)}>
+                Load more
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -148,3 +188,5 @@ export function AdminResourcePage({ title, description, endpoint, columns, crud 
 
 function valueAt(row: unknown, key: string): unknown { return key.split(".").reduce<unknown>((value, part) => value && typeof value === "object" ? (value as Record<string, unknown>)[part] : undefined, row); }
 function formatValue(value: unknown) { if (value == null) return <span className="text-muted-foreground">—</span>; if (typeof value === "boolean") return value ? "Yes" : "No"; if (typeof value === "object") return JSON.stringify(value); if (typeof value === "string" && /^\d{4}-\d\d-\d\dT/.test(value)) return new Date(value).toLocaleString(); return String(value); }
+function searchableText(value: unknown): string { if (value == null) return ""; if (typeof value === "boolean") return value ? "yes" : "no"; if (typeof value === "object") return JSON.stringify(value).toLowerCase(); return String(value).toLowerCase(); }
+function csvCell(value: string): string { return `"${value.replace(/"/g, '""')}"`; }

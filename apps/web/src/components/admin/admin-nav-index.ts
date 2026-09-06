@@ -1,4 +1,5 @@
 import {
+  Bell,
   Boxes,
   Building2,
   CircleDollarSign,
@@ -14,6 +15,7 @@ import {
   ShieldCheck,
   Users,
   WalletCards,
+  Webhook,
   Workflow,
   Wrench,
   type LucideIcon,
@@ -71,6 +73,8 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     items: [
       { label: "Support Tickets", href: "/admin/support", icon: LifeBuoy },
       { label: "Abuse Reports", href: "/admin/abuse", icon: ShieldAlert },
+      { label: "Alert Rules", href: "/admin/alert-rules", icon: Bell },
+      { label: "Webhooks", href: "/admin/webhooks", icon: Webhook },
     ],
   },
   {

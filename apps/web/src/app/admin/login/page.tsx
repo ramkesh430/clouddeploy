@@ -13,6 +13,7 @@ import { useAuthStore, type AuthUser } from "@/lib/store/auth-store";
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(1, "Password is required"),
+  otpCode: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -29,6 +30,7 @@ export default function AdminLoginPage() {
   const setSession = useAuthStore((s) => s.setSession);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [needsOtp, setNeedsOtp] = useState(false);
 
   const {
     register,
@@ -57,6 +59,11 @@ export default function AdminLoginPage() {
       setSession(data.user, data.accessToken);
       router.replace("/admin");
     } catch (err) {
+      if (err instanceof ApiError && err.message.toLowerCase().includes("two-factor")) {
+        setNeedsOtp(true);
+        setFormError(err.message);
+        return;
+      }
       setFormError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally {
       setSubmitting(false);
@@ -86,7 +93,8 @@ export default function AdminLoginPage() {
                 id="email"
                 type="email"
                 placeholder="admin@clouddeploy.dev"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+                disabled={needsOtp}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none disabled:opacity-50"
                 {...register("email")}
               />
               {errors.email && <p className="text-xs text-red-400">{errors.email.message}</p>}
@@ -100,11 +108,28 @@ export default function AdminLoginPage() {
                 id="password"
                 type="password"
                 placeholder="••••••••"
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+                disabled={needsOtp}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none disabled:opacity-50"
                 {...register("password")}
               />
               {errors.password && <p className="text-xs text-red-400">{errors.password.message}</p>}
             </div>
+
+            {needsOtp && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="otpCode" className="text-sm text-slate-400">
+                  Two-factor code
+                </label>
+                <input
+                  id="otpCode"
+                  autoFocus
+                  maxLength={16}
+                  placeholder="123456"
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+                  {...register("otpCode")}
+                />
+              </div>
+            )}
 
             {formError && (
               <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</p>
@@ -115,7 +140,7 @@ export default function AdminLoginPage() {
               disabled={submitting}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Signing in…" : "Sign in"}
+              {submitting ? "Signing in…" : needsOtp ? "Verify and sign in" : "Sign in"}
             </button>
           </div>
         </form>

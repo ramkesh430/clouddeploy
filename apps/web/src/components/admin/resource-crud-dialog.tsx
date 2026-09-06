@@ -10,6 +10,8 @@ import { useRegions } from "@/hooks/use-phase3";
 
 export type FieldValue = string | number | boolean;
 
+export type DynamicSource = "organizations" | "regions" | "plans" | "projects";
+
 export interface ResourceField {
   key: string;
   label: string;
@@ -18,23 +20,38 @@ export interface ResourceField {
   /** Static <select> choices. Ignored for "text"/"number"/"checkbox". */
   options?: Array<{ value: string; label: string }>;
   /** Populates a "select" field's options from live admin data instead of a
-   * fixed list — the only two references every CRUD form here needs. */
-  dynamicSource?: "organizations" | "regions";
+   * fixed list. */
+  dynamicSource?: DynamicSource;
+  /** For dynamicSource "projects": only offer projects belonging to the
+   * organization currently selected in this other field. */
+  dependsOn?: string;
   placeholder?: string;
 }
 
 interface OrgOption { id: string; name: string }
+interface PlanOption { id: string; name: string; tier: string }
+interface ProjectOption { id: string; name: string; organizationId: string }
+interface Paginated<T> { data: T[]; nextCursor: string | null }
 
-function useDynamicOptions(source?: "organizations" | "regions") {
-  const organizations = useAdminResource<OrgOption[]>("/admin/organizations?limit=200", { enabled: source === "organizations" });
+function useDynamicOptions(source: DynamicSource | undefined, dependsOnValue: FieldValue | undefined) {
+  const organizations = useAdminResource<Paginated<OrgOption>>("/admin/organizations?limit=200", { enabled: source === "organizations" });
   const regions = useRegions();
-  if (source === "organizations") return (organizations.data ?? []).map((org) => ({ value: org.id, label: org.name }));
+  const plans = useAdminResource<PlanOption[]>("/admin/plans", { enabled: source === "plans" });
+  const projects = useAdminResource<Paginated<ProjectOption>>("/admin/projects?limit=200", { enabled: source === "projects" });
+
+  if (source === "organizations") return (organizations.data?.data ?? []).map((org) => ({ value: org.id, label: org.name }));
   if (source === "regions") return (regions.data ?? []).map((region) => ({ value: region.code, label: region.name }));
+  if (source === "plans") return (plans.data ?? []).map((plan) => ({ value: plan.id, label: `${plan.name} (${plan.tier})` }));
+  if (source === "projects") {
+    const list = projects.data?.data ?? [];
+    const filtered = dependsOnValue ? list.filter((project) => project.organizationId === dependsOnValue) : list;
+    return filtered.map((project) => ({ value: project.id, label: project.name }));
+  }
   return [];
 }
 
-function FieldInput({ field, value, onChange }: { field: ResourceField; value: FieldValue; onChange: (value: FieldValue) => void }) {
-  const dynamicOptions = useDynamicOptions(field.dynamicSource);
+function FieldInput({ field, value, dependsOnValue, onChange }: { field: ResourceField; value: FieldValue; dependsOnValue: FieldValue | undefined; onChange: (value: FieldValue) => void }) {
+  const dynamicOptions = useDynamicOptions(field.dynamicSource, dependsOnValue);
   const options = field.dynamicSource ? dynamicOptions : (field.options ?? []);
 
   if (field.type === "checkbox") {
@@ -47,15 +64,17 @@ function FieldInput({ field, value, onChange }: { field: ResourceField; value: F
   }
 
   if (field.type === "select") {
+    const waitingOnDependency = !!field.dependsOn && !dependsOnValue;
     return (
       <select
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         value={String(value ?? "")}
         required={field.required}
+        disabled={waitingOnDependency}
         onChange={(e) => onChange(e.target.value)}
       >
         <option value="" disabled>
-          Select {field.label.toLowerCase()}…
+          {waitingOnDependency ? "Select an organization first…" : `Select ${field.label.toLowerCase()}…`}
         </option>
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -125,7 +144,12 @@ export function ResourceCrudDialog({
           {fields.map((field) => (
             <div className="flex flex-col gap-1.5" key={field.key}>
               {field.type !== "checkbox" && <Label>{field.label}</Label>}
-              <FieldInput field={field} value={values[field.key]} onChange={(value) => setValues((prev) => ({ ...prev, [field.key]: value }))} />
+              <FieldInput
+                field={field}
+                value={values[field.key]}
+                dependsOnValue={field.dependsOn ? values[field.dependsOn] : undefined}
+                onChange={(value) => setValues((prev) => ({ ...prev, [field.key]: value }))}
+              />
             </div>
           ))}
           {error && <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}

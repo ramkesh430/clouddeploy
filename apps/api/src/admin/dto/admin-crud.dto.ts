@@ -1,4 +1,4 @@
-import { DomainType, EnvironmentTarget, DomainStatus, PlanTier, ProjectStatus } from "@clouddeploy/database";
+import { DomainType, EnvironmentTarget, DomainStatus, PlanTier, ProjectStatus, SubscriptionStatus } from "@clouddeploy/database";
 import { IsBoolean, IsEmail, IsEnum, IsInt, IsObject, IsOptional, IsString, Matches, Min, MinLength } from "class-validator";
 
 export class CreateAdminUserDto {
@@ -69,4 +69,9 @@ export class CreateAdminDomainDto {
 export class UpdateAdminDomainDto {
   @IsOptional() @IsEnum(DomainStatus) status?: DomainStatus;
   @IsOptional() @IsEnum(EnvironmentTarget) environment?: EnvironmentTarget;
+}
+
+export class UpdateSubscriptionDto {
+  @IsOptional() @IsString() planId?: string;
+  @IsOptional() @IsEnum(SubscriptionStatus) status?: SubscriptionStatus;
 }

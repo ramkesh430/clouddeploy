@@ -40,6 +40,14 @@ function AdminGate({ children }: { children: React.ReactNode }) {
         <AdminSidebar />
 
         <main className="min-w-0 flex-1 lg:ml-[260px]">
+          {!user?.twoFactorEnabled && (
+            <div className="flex items-center justify-center gap-3 bg-amber-500/15 px-6 py-2 text-center text-xs text-amber-300">
+              Two-factor authentication is required to create, edit, or delete anything in the admin panel.
+              <Link href="/security" className="font-semibold underline underline-offset-2 hover:text-amber-200">
+                Set it up now
+              </Link>
+            </div>
+          )}
           <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-800 bg-[#07101c]/95 px-6 backdrop-blur xl:px-8">
             <AdminSearch />
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,21 +11,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { ApiError } from "@/lib/api-client";
 import { useLogin } from "@/hooks/use-auth";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(1, "Password is required"),
+  otpCode: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const login = useLogin();
+  const [needsOtp, setNeedsOtp] = useState(false);
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  function onSubmit(values: FormValues) {
+    login.mutate(values, {
+      onError: (err) => {
+        if (err instanceof ApiError && err.message.toLowerCase().includes("two-factor")) setNeedsOtp(true);
+      },
+    });
+  }
 
   return (
     <Card>
@@ -46,10 +58,10 @@ export default function LoginPage() {
           <span className="text-xs text-muted-foreground">or</span>
           <Separator className="flex-1" />
         </div>
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit((v) => login.mutate(v))}>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="you@example.com" {...register("email")} />
+            <Input id="email" type="email" placeholder="you@example.com" disabled={needsOtp} {...register("email")} />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
           </div>
           <div className="flex flex-col gap-1.5">
@@ -59,12 +71,24 @@ export default function LoginPage() {
                 Forgot password?
               </Link>
             </div>
-            <Input id="password" type="password" placeholder="••••••••" {...register("password")} />
+            <Input id="password" type="password" placeholder="••••••••" disabled={needsOtp} {...register("password")} />
             {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
           </div>
+          {needsOtp && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="otpCode">Two-factor code</Label>
+              <Input id="otpCode" placeholder="123456" autoFocus maxLength={16} {...register("otpCode")} />
+              <p className="text-xs text-muted-foreground">Enter the 6-digit code from your authenticator app, or a recovery code.</p>
+            </div>
+          )}
           <Button type="submit" className="w-full" loading={login.isPending}>
-            Login
+            {needsOtp ? "Verify and log in" : "Login"}
           </Button>
+          {needsOtp && (
+            <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => setNeedsOtp(false)}>
+              Use a different account
+            </button>
+          )}
         </form>
         <p className="text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}

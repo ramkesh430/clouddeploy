@@ -13,6 +13,7 @@ import {
   UpdateAdminUserDto,
   UpdateOrganizationDto,
   UpdatePlanDto,
+  UpdateSubscriptionDto,
 } from "./dto/admin-crud.dto";
 
 /** Prisma's unique-constraint violation code — surfaced as a friendly 409
@@ -180,16 +181,30 @@ export class AdminService {
     };
   }
 
-  users(take: number, cursor?: string) {
-    return this.prisma.user.findMany({ where: { deletedAt: null }, select: { id: true, email: true, fullName: true, isPlatformAdmin: true, isSuspended: true, suspendedReason: true, twoFactorEnabled: true, lastLoginAt: true, createdAt: true, _count: { select: { organizationMembers: true } } }, orderBy: { createdAt: "desc" }, take, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+  /** Fetches one row beyond `take` to know whether a next page exists,
+   * without a separate COUNT query — the extra row is trimmed off and its
+   * predecessor's id becomes the next cursor. */
+  private paginate<T extends { id: string }>(rows: T[], take: number): { data: T[]; nextCursor: string | null } {
+    if (rows.length > take) {
+      const data = rows.slice(0, take);
+      return { data, nextCursor: data[data.length - 1]!.id };
+    }
+    return { data: rows, nextCursor: null };
   }
 
-  organizations(take: number, cursor?: string) {
-    return this.prisma.organization.findMany({ where: { deletedAt: null }, include: { subscription: { include: { plan: true } }, _count: { select: { members: true, projects: true, databases: true } } }, orderBy: { createdAt: "desc" }, take, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+  async users(take: number, cursor?: string) {
+    const rows = await this.prisma.user.findMany({ where: { deletedAt: null }, select: { id: true, email: true, fullName: true, isPlatformAdmin: true, isSuspended: true, suspendedReason: true, twoFactorEnabled: true, lastLoginAt: true, createdAt: true, _count: { select: { organizationMembers: true } } }, orderBy: { createdAt: "desc" }, take: take + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+    return this.paginate(rows, take);
   }
 
-  projects(take: number, cursor?: string) {
-    return this.prisma.project.findMany({ where: { deletedAt: null }, include: { organization: { select: { id: true, name: true } }, _count: { select: { services: true, deployments: true } } }, orderBy: { createdAt: "desc" }, take, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+  async organizations(take: number, cursor?: string) {
+    const rows = await this.prisma.organization.findMany({ where: { deletedAt: null }, include: { subscription: { include: { plan: true } }, _count: { select: { members: true, projects: true, databases: true } } }, orderBy: { createdAt: "desc" }, take: take + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+    return this.paginate(rows, take);
+  }
+
+  async projects(take: number, cursor?: string) {
+    const rows = await this.prisma.project.findMany({ where: { deletedAt: null }, include: { organization: { select: { id: true, name: true } }, _count: { select: { services: true, deployments: true } } }, orderBy: { createdAt: "desc" }, take: take + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+    return this.paginate(rows, take);
   }
 
   deployments(take: number) { return this.prisma.deployment.findMany({ include: { project: { select: { id: true, name: true, organization: { select: { name: true } } } }, service: { select: { name: true } }, build: true }, orderBy: { createdAt: "desc" }, take }); }
@@ -200,6 +215,16 @@ export class AdminService {
   domains(take: number) { return this.prisma.domain.findMany({ where: { deletedAt: null }, include: { organization: { select: { name: true } }, project: { select: { name: true } }, ssl: true }, orderBy: { createdAt: "desc" }, take }); }
   plans() { return this.prisma.plan.findMany({ include: { _count: { select: { subscriptions: true } } }, orderBy: { priceMonthlyCents: "asc" } }); }
   subscriptions(take: number) { return this.prisma.subscription.findMany({ include: { organization: { select: { name: true } }, plan: true }, orderBy: { createdAt: "desc" }, take }); }
+  alertRules(take: number) { return this.prisma.alertRule.findMany({ include: { organization: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take }); }
+  webhooks(take: number) {
+    // `secret` (the HMAC signing key) is deliberately excluded — an admin
+    // debugging delivery failures needs to see the webhook, not its secret.
+    return this.prisma.webhook.findMany({
+      select: { id: true, url: true, events: true, isActive: true, createdAt: true, organization: { select: { name: true } }, _count: { select: { deliveries: true } } },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+  }
   transactions(take: number) { return this.prisma.payment.findMany({ include: { invoice: { include: { organization: { select: { name: true } } } } }, orderBy: { createdAt: "desc" }, take }); }
   usage(take: number) { return this.prisma.usageRecord.findMany({ include: { organization: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take }); }
   logs(take: number) { return this.prisma.auditLog.findMany({ include: { user: { select: { email: true } }, organization: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take }); }
@@ -216,24 +241,40 @@ export class AdminService {
     return { twoFactorUsers, suspiciousLogins, activeApiKeys, ipRestrictedKeys, ssoOrganizations, recentSecretAccess };
   }
 
-  async suspendUser(userId: string, reason: string) {
+  /** Every admin mutation goes through here afterward — a missed audit
+   * write is logged but never fails the request that already succeeded. */
+  private audit(userId: string, action: string, resourceType: string, resourceId: string, newValue?: unknown, oldValue?: unknown) {
+    return this.prisma.auditLog
+      .create({ data: { userId, action, resourceType, resourceId, newValue: newValue as Prisma.InputJsonValue, oldValue: oldValue as Prisma.InputJsonValue } })
+      .catch((err) => console.error("Failed to write audit log", action, resourceId, err));
+  }
+
+  async suspendUser(userId: string, reason: string, currentUserId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException("User not found");
     await this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
-    return this.prisma.user.update({ where: { id: userId }, data: { isSuspended: true, suspendedReason: reason }, select: SAFE_USER_SELECT });
+    const updated = await this.prisma.user.update({ where: { id: userId }, data: { isSuspended: true, suspendedReason: reason }, select: SAFE_USER_SELECT });
+    await this.audit(currentUserId, "user.suspend", "User", userId, { reason });
+    return updated;
   }
 
-  resumeUser(userId: string) { return this.prisma.user.update({ where: { id: userId }, data: { isSuspended: false, suspendedReason: null }, select: SAFE_USER_SELECT }); }
+  async resumeUser(userId: string, currentUserId: string) {
+    const updated = await this.prisma.user.update({ where: { id: userId }, data: { isSuspended: false, suspendedReason: null }, select: SAFE_USER_SELECT });
+    await this.audit(currentUserId, "user.resume", "User", userId);
+    return updated;
+  }
 
-  async createUser(dto: CreateAdminUserDto) {
+  async createUser(dto: CreateAdminUserDto, currentUserId: string) {
     const passwordHash = await hashPassword(dto.password);
     try {
       // Admin-provisioned accounts are pre-verified — there's no signup
       // flow here to send a verification email through.
-      return await this.prisma.user.create({
+      const created = await this.prisma.user.create({
         data: { fullName: dto.fullName, email: dto.email.toLowerCase(), passwordHash, isPlatformAdmin: !!dto.isPlatformAdmin, emailVerifiedAt: new Date() },
         select: SAFE_USER_SELECT,
       });
+      await this.audit(currentUserId, "user.create", "User", created.id, { email: created.email, isPlatformAdmin: created.isPlatformAdmin });
+      return created;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("A user with this email already exists");
       throw err;
@@ -245,11 +286,13 @@ export class AdminService {
       throw new ForbiddenException("You cannot remove your own platform administrator access");
     }
     try {
-      return await this.prisma.user.update({
+      const updated = await this.prisma.user.update({
         where: { id: userId },
         data: { ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}), ...(dto.email !== undefined ? { email: dto.email.toLowerCase() } : {}), ...(dto.isPlatformAdmin !== undefined ? { isPlatformAdmin: dto.isPlatformAdmin } : {}) },
         select: SAFE_USER_SELECT,
       });
+      await this.audit(currentUserId, "user.update", "User", userId, dto);
+      return updated;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("A user with this email already exists");
       throw err;
@@ -259,53 +302,79 @@ export class AdminService {
   async deleteUser(userId: string, currentUserId: string) {
     if (userId === currentUserId) throw new ForbiddenException("You cannot delete your own account");
     await this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
-    return this.prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() }, select: SAFE_USER_SELECT });
+    const deleted = await this.prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() }, select: SAFE_USER_SELECT });
+    await this.audit(currentUserId, "user.delete", "User", userId);
+    return deleted;
   }
 
-  async createOrganization(dto: CreateOrganizationDto) {
+  async userSessions(userId: string) {
+    return this.prisma.session.findMany({ where: { userId, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" }, select: { id: true, ipAddress: true, userAgent: true, createdAt: true, expiresAt: true } });
+  }
+
+  async revokeUserSession(userId: string, sessionId: string, currentUserId: string) {
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) throw new NotFoundException("Session not found");
+    const revoked = await this.prisma.session.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
+    await this.audit(currentUserId, "user.revoke_session", "Session", sessionId, { userId });
+    return revoked;
+  }
+
+  async createOrganization(dto: CreateOrganizationDto, currentUserId: string) {
     try {
-      return await this.prisma.organization.create({ data: { name: dto.name, slug: dto.slug, isAgency: !!dto.isAgency } });
+      const created = await this.prisma.organization.create({ data: { name: dto.name, slug: dto.slug, isAgency: !!dto.isAgency } });
+      await this.audit(currentUserId, "organization.create", "Organization", created.id, dto);
+      return created;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("An organization with this slug already exists");
       throw err;
     }
   }
 
-  async updateOrganization(organizationId: string, dto: UpdateOrganizationDto) {
+  async updateOrganization(organizationId: string, dto: UpdateOrganizationDto, currentUserId: string) {
     try {
-      return await this.prisma.organization.update({ where: { id: organizationId }, data: dto });
+      const updated = await this.prisma.organization.update({ where: { id: organizationId }, data: dto });
+      await this.audit(currentUserId, "organization.update", "Organization", organizationId, dto);
+      return updated;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("An organization with this slug already exists");
       throw err;
     }
   }
 
-  deleteOrganization(organizationId: string) {
-    return this.prisma.organization.update({ where: { id: organizationId }, data: { deletedAt: new Date() } });
+  async deleteOrganization(organizationId: string, currentUserId: string) {
+    const deleted = await this.prisma.organization.update({ where: { id: organizationId }, data: { deletedAt: new Date() } });
+    await this.audit(currentUserId, "organization.delete", "Organization", organizationId);
+    return deleted;
   }
 
-  async createProject(dto: CreateAdminProjectDto) {
+  async createProject(dto: CreateAdminProjectDto, currentUserId: string) {
     const organization = await this.prisma.organization.findUnique({ where: { id: dto.organizationId } });
     if (!organization || organization.deletedAt) throw new NotFoundException("Organization not found");
     try {
-      return await this.prisma.project.create({ data: { organizationId: dto.organizationId, name: dto.name, slug: dto.slug, region: dto.region ?? "us-east" } });
+      const created = await this.prisma.project.create({ data: { organizationId: dto.organizationId, name: dto.name, slug: dto.slug, region: dto.region ?? "us-east" } });
+      await this.audit(currentUserId, "project.create", "Project", created.id, dto);
+      return created;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("This organization already has a project with that slug");
       throw err;
     }
   }
 
-  updateProject(projectId: string, dto: UpdateAdminProjectDto) {
-    return this.prisma.project.update({ where: { id: projectId }, data: dto });
+  async updateProject(projectId: string, dto: UpdateAdminProjectDto, currentUserId: string) {
+    const updated = await this.prisma.project.update({ where: { id: projectId }, data: dto });
+    await this.audit(currentUserId, "project.update", "Project", projectId, dto);
+    return updated;
   }
 
-  deleteProject(projectId: string) {
-    return this.prisma.project.update({ where: { id: projectId }, data: { deletedAt: new Date(), status: "ARCHIVED" } });
+  async deleteProject(projectId: string, currentUserId: string) {
+    const deleted = await this.prisma.project.update({ where: { id: projectId }, data: { deletedAt: new Date(), status: "ARCHIVED" } });
+    await this.audit(currentUserId, "project.delete", "Project", projectId);
+    return deleted;
   }
 
-  async createPlan(dto: CreatePlanDto) {
+  async createPlan(dto: CreatePlanDto, currentUserId: string) {
     try {
-      return await this.prisma.plan.create({
+      const created = await this.prisma.plan.create({
         data: {
           tier: dto.tier,
           name: dto.name,
@@ -316,44 +385,72 @@ export class AdminService {
           features: (dto.features ?? {}) as Prisma.InputJsonValue,
         },
       });
+      await this.audit(currentUserId, "plan.create", "Plan", created.id, dto);
+      return created;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("A plan for this tier already exists");
       throw err;
     }
   }
 
-  updatePlan(planId: string, dto: UpdatePlanDto) {
+  async updatePlan(planId: string, dto: UpdatePlanDto, currentUserId: string) {
     const { features, ...rest } = dto;
-    return this.prisma.plan.update({
+    const updated = await this.prisma.plan.update({
       where: { id: planId },
       data: { ...rest, ...(features !== undefined ? { features: features as Prisma.InputJsonValue } : {}) },
     });
+    await this.audit(currentUserId, "plan.update", "Plan", planId, dto);
+    return updated;
   }
 
-  async deletePlan(planId: string) {
+  async deletePlan(planId: string, currentUserId: string) {
     const activeSubscriptions = await this.prisma.subscription.count({ where: { planId, status: { in: ["ACTIVE", "TRIALING"] } } });
     if (activeSubscriptions > 0) throw new BadRequestException(`Cannot delete a plan with ${activeSubscriptions} active subscription(s)`);
-    return this.prisma.plan.delete({ where: { id: planId } });
+    const deleted = await this.prisma.plan.delete({ where: { id: planId } });
+    await this.audit(currentUserId, "plan.delete", "Plan", planId);
+    return deleted;
   }
 
-  async createDomain(dto: CreateAdminDomainDto) {
+  async createDomain(dto: CreateAdminDomainDto, currentUserId: string) {
     const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
     if (!project || project.deletedAt || project.organizationId !== dto.organizationId) throw new NotFoundException("Project not found for this organization");
     try {
-      return await this.prisma.domain.create({
+      const created = await this.prisma.domain.create({
         data: { organizationId: dto.organizationId, projectId: dto.projectId, hostname: dto.hostname.toLowerCase(), type: dto.type ?? "CUSTOM", environment: dto.environment ?? "PRODUCTION", dnsRecords: {} },
       });
+      await this.audit(currentUserId, "domain.create", "Domain", created.id, dto);
+      return created;
     } catch (err) {
       if (isUniqueConstraintError(err)) throw new ConflictException("This hostname is already registered");
       throw err;
     }
   }
 
-  updateDomain(domainId: string, dto: UpdateAdminDomainDto) {
-    return this.prisma.domain.update({ where: { id: domainId }, data: { ...dto, ...(dto.status === "ACTIVE" ? { verifiedAt: new Date() } : {}) } });
+  async updateDomain(domainId: string, dto: UpdateAdminDomainDto, currentUserId: string) {
+    const updated = await this.prisma.domain.update({ where: { id: domainId }, data: { ...dto, ...(dto.status === "ACTIVE" ? { verifiedAt: new Date() } : {}) } });
+    await this.audit(currentUserId, "domain.update", "Domain", domainId, dto);
+    return updated;
   }
 
-  deleteDomain(domainId: string) {
-    return this.prisma.domain.update({ where: { id: domainId }, data: { deletedAt: new Date() } });
+  async deleteDomain(domainId: string, currentUserId: string) {
+    const deleted = await this.prisma.domain.update({ where: { id: domainId }, data: { deletedAt: new Date() } });
+    await this.audit(currentUserId, "domain.delete", "Domain", domainId);
+    return deleted;
+  }
+
+  async updateSubscription(subscriptionId: string, dto: UpdateSubscriptionDto, currentUserId: string) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
+    if (!subscription) throw new NotFoundException("Subscription not found");
+    if (dto.planId) {
+      const plan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
+      if (!plan) throw new NotFoundException("Plan not found");
+    }
+    const updated = await this.prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: { ...(dto.planId ? { planId: dto.planId } : {}), ...(dto.status ? { status: dto.status } : {}) },
+      include: { organization: { select: { name: true } }, plan: true },
+    });
+    await this.audit(currentUserId, "subscription.update", "Subscription", subscriptionId, dto, { planId: subscription.planId, status: subscription.status });
+    return updated;
   }
 }

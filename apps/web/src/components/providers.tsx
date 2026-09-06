@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { initErrorTracking } from "@/lib/error-tracking";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ImpersonationBanner />
       {children}
       <Toaster />
     </QueryClientProvider>

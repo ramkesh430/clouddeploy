@@ -1,7 +1,97 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { Pool } from "pg";
+import { encryptSecret } from "@clouddeploy/security";
 
 const prisma = new PrismaClient();
+
+// Matches @clouddeploy/config's own default when ENCRYPTION_KEY isn't set in
+// the environment. Prisma auto-loads packages/database/.env, so as long as
+// that file's ENCRYPTION_KEY matches apps/api's, seed-encrypted secrets
+// decrypt correctly through the real running API — see the note on
+// PostgresAdminService for why the seeded database below is provisioned for
+// real rather than left as a metadata-only row the API can't connect to.
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? "dev-only-encryption-key-change-me-in-prod!";
+const encryptDevSecret = (plainText: string) => encryptSecret(plainText, ENCRYPTION_KEY);
+
+const SHOPFRONT_DB_PASSWORD = "shopfront_dev_db_password_123!";
+
+/**
+ * Provisions the seeded "shopfront" database for real on the shared local
+ * Postgres server — the same role/database primitives PostgresAdminService
+ * uses for a database created through the app — so the demo project's SQL
+ * editor, table browser, connections, and live metrics all work out of the
+ * box instead of pointing at a role that doesn't exist. Idempotent: safe to
+ * run against a server that already has these from a previous seed.
+ */
+async function provisionShopfrontDatabase(): Promise<void> {
+  const url = new URL(process.env.DATABASE_URL ?? "");
+  const adminPool = new Pool({
+    host: url.hostname,
+    port: Number(url.port || 5432),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: "postgres",
+    max: 1,
+  });
+
+  try {
+    const roleExists = await adminPool.query(`SELECT 1 FROM pg_roles WHERE rolname = 'shopfront_user'`);
+    if (roleExists.rowCount === 0) {
+      await adminPool.query(`CREATE ROLE shopfront_user WITH LOGIN PASSWORD '${SHOPFRONT_DB_PASSWORD.replace(/'/g, "''")}'`);
+    }
+    const dbExists = await adminPool.query(`SELECT 1 FROM pg_database WHERE datname = 'shopfront'`);
+    if (dbExists.rowCount === 0) {
+      await adminPool.query(`CREATE DATABASE shopfront OWNER shopfront_user`);
+      await adminPool.query(`REVOKE CONNECT ON DATABASE shopfront FROM PUBLIC`);
+      await adminPool.query(`GRANT CONNECT ON DATABASE shopfront TO shopfront_user`);
+    }
+  } finally {
+    await adminPool.end();
+  }
+
+  const tenantPool = new Pool({
+    host: url.hostname,
+    port: Number(url.port || 5432),
+    user: "shopfront_user",
+    password: SHOPFRONT_DB_PASSWORD,
+    database: "shopfront",
+    max: 1,
+  });
+
+  try {
+    const tablesExist = await tenantPool.query(`SELECT 1 FROM information_schema.tables WHERE table_name = 'users'`);
+    if (tablesExist.rowCount === 0) {
+      await tenantPool.query(`
+        CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE orders (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          total_cents INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        INSERT INTO users (name, email, created_at) VALUES
+          ('John Doe', 'john.doe@example.com', now() - interval '35 days'),
+          ('Jane Smith', 'jane.smith@example.com', now() - interval '34 days'),
+          ('Alex Kumar', 'alex.kumar@example.com', now() - interval '4 days'),
+          ('Sara Lee', 'sara.lee@example.com', now() - interval '3 days');
+        INSERT INTO orders (user_id, total_cents, status, created_at) VALUES
+          (1, 4999, 'completed', now() - interval '30 days'),
+          (1, 2500, 'completed', now() - interval '10 days'),
+          (2, 12000, 'completed', now() - interval '20 days'),
+          (3, 3499, 'pending', now() - interval '2 days');
+      `);
+    }
+  } finally {
+    await tenantPool.end();
+  }
+}
 
 async function main() {
   console.log("Seeding CloudDeploy development data...");
@@ -194,7 +284,7 @@ async function main() {
   await prisma.clientPortalAccess.upsert({ where: { clientId: agencyClient.id }, create: { clientId: agencyClient.id, metricsReadOnly: true, invoicesVisible: true, deploymentStatus: true, domainStatus: true, supportAccess: true }, update: {} });
   await prisma.agencyBranding.upsert({ where: { organizationId: org.id }, create: { organizationId: org.id, brandName: "Acme Cloud Studio", primaryAccent: "#2563eb", supportEmail: "support@acme.example" }, update: {} });
 
-  const frontend = await prisma.service.create({
+  const frontend = (await prisma.service.findFirst({ where: { projectId: project.id, name: "frontend" } })) ?? await prisma.service.create({
     data: {
       projectId: project.id,
       name: "frontend",
@@ -213,7 +303,7 @@ async function main() {
     },
   });
 
-  const backend = await prisma.service.create({
+  const backend = (await prisma.service.findFirst({ where: { projectId: project.id, name: "backend" } })) ?? await prisma.service.create({
     data: {
       projectId: project.id,
       name: "backend",
@@ -238,7 +328,7 @@ async function main() {
     update: {},
   });
 
-  const dbService = await prisma.service.create({
+  const dbService = (await prisma.service.findFirst({ where: { projectId: project.id, name: "database" } })) ?? await prisma.service.create({
     data: {
       projectId: project.id,
       name: "database",
@@ -253,8 +343,12 @@ async function main() {
     },
   });
 
-  await prisma.database.create({
-    data: {
+  await provisionShopfrontDatabase();
+
+  await prisma.database.upsert({
+    where: { serviceId: dbService.id },
+    update: {},
+    create: {
       organizationId: org.id,
       serviceId: dbService.id,
       name: "shopfront-db",
@@ -267,7 +361,7 @@ async function main() {
       port: 5432,
       databaseName: "shopfront",
       username: "shopfront_user",
-      passwordCipher: "enc:dev-only-placeholder",
+      passwordCipher: encryptDevSecret(SHOPFRONT_DB_PASSWORD),
       storageMb: 4096,
       storageUsedMb: 512,
     },
@@ -295,7 +389,8 @@ async function main() {
     });
   }
 
-  const deployment = await prisma.deployment.create({
+  const existingDeployment = await prisma.deployment.findFirst({ where: { projectId: project.id, commitSha: "a1b2c3d" } });
+  const deployment = existingDeployment ?? await prisma.deployment.create({
     data: {
       projectId: project.id,
       serviceId: frontend.id,
@@ -313,29 +408,31 @@ async function main() {
     },
   });
 
-  await prisma.deploymentLog.createMany({
-    data: [
-      "Cloning repository...",
-      "Repository cloned successfully",
-      "Detected Next.js frontend",
-      "Detected NestJS backend",
-      "Installing dependencies...",
-      "Building frontend...",
-      "Building backend...",
-      "Creating Docker image...",
-      "Provisioning PostgreSQL...",
-      "Starting containers...",
-      "Configuring Traefik...",
-      "Issuing SSL...",
-      "Health check passed",
-      "Deployment successful",
-    ].map((message, i) => ({
-      deploymentId: deployment.id,
-      level: "INFO" as const,
-      message,
-      timestamp: new Date(Date.now() - (14 - i) * 4000),
-    })),
-  });
+  if (!existingDeployment) {
+    await prisma.deploymentLog.createMany({
+      data: [
+        "Cloning repository...",
+        "Repository cloned successfully",
+        "Detected Next.js frontend",
+        "Detected NestJS backend",
+        "Installing dependencies...",
+        "Building frontend...",
+        "Building backend...",
+        "Creating Docker image...",
+        "Provisioning PostgreSQL...",
+        "Starting containers...",
+        "Configuring Traefik...",
+        "Issuing SSL...",
+        "Health check passed",
+        "Deployment successful",
+      ].map((message, i) => ({
+        deploymentId: deployment.id,
+        level: "INFO" as const,
+        message,
+        timestamp: new Date(Date.now() - (14 - i) * 4000),
+      })),
+    });
+  }
 
   await prisma.metric.createMany({
     data: Array.from({ length: 24 }).map((_, i) => ({
@@ -349,13 +446,17 @@ async function main() {
     })),
   });
 
-  await prisma.environmentVariable.createMany({
-    data: [
-      { projectId: project.id, serviceId: backend.id, key: "NODE_ENV", valueCipher: "enc:production", isSecret: false },
-      { projectId: project.id, serviceId: backend.id, key: "DATABASE_URL", valueCipher: "enc:postgres://***", isSecret: true },
-      { projectId: project.id, serviceId: backend.id, key: "JWT_SECRET", valueCipher: "enc:***", isSecret: true },
-    ],
-  });
+  for (const envVar of [
+    { key: "NODE_ENV", value: "production", isSecret: false },
+    { key: "DATABASE_URL", value: `postgres://shopfront_user:${SHOPFRONT_DB_PASSWORD}@postgres.internal:5432/shopfront`, isSecret: true },
+    { key: "JWT_SECRET", value: "dev-seed-demo-jwt-secret-not-used-for-real-auth", isSecret: true },
+  ]) {
+    await prisma.environmentVariable.upsert({
+      where: { projectId_serviceId_environment_key: { projectId: project.id, serviceId: backend.id, environment: "PRODUCTION", key: envVar.key } },
+      update: {},
+      create: { projectId: project.id, serviceId: backend.id, key: envVar.key, valueCipher: encryptDevSecret(envVar.value), isSecret: envVar.isSecret },
+    });
+  }
 
   // ── Template marketplace ─────────────────────────────────────────────
   // servicesJson is untyped at the schema level (jsonb) — its contract is

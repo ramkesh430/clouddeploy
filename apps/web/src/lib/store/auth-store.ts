@@ -26,6 +26,9 @@ interface AuthState {
   impersonator: Impersonator | null;
   setSession: (user: AuthUser, accessToken: string) => void;
   setAccessToken: (accessToken: string) => void;
+  /** Refreshes the cached user in place — for reconciling a persisted
+   * session against the server's current view, not for login/logout. */
+  setUser: (user: AuthUser) => void;
   setActiveOrganization: (organizationId: string) => void;
   startImpersonation: (targetUser: AuthUser, targetAccessToken: string) => void;
   stopImpersonation: () => void;
@@ -41,6 +44,7 @@ export const useAuthStore = create<AuthState>()(
       impersonator: null,
       setSession: (user, accessToken) => set({ user, accessToken }),
       setAccessToken: (accessToken) => set({ accessToken }),
+      setUser: (user) => set({ user }),
       setActiveOrganization: (organizationId) => set({ activeOrganizationId: organizationId }),
       startImpersonation: (targetUser, targetAccessToken) => {
         const { user, accessToken } = get();

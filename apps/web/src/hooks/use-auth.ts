@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api-client";
 import { useAuthStore, type AuthUser } from "@/lib/store/auth-store";
@@ -10,6 +11,41 @@ interface AuthResponse {
   user: AuthUser;
   accessToken: string;
   expiresIn: number;
+}
+
+/** The cached user in the persisted auth store is only ever written at
+ * login — if the server-side shape of that user object gains a field
+ * (as isPlatformAdmin and twoFactorEnabled did mid-project), anyone who
+ * stayed logged in across that change keeps a stale snapshot missing it
+ * forever, with no way to notice. Mounted once app-wide, this pulls the
+ * server's current view of whichever identity is active (including a
+ * currently-impersonated one) and reconciles the cache — so a security
+ * flag the server already knows about doesn't silently go stale on the
+ * client. */
+export function useSyncCurrentUser() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const setUser = useAuthStore((s) => s.setUser);
+  const { data } = useQuery({
+    queryKey: ["auth-me-sync"],
+    queryFn: () => api.get<AuthUser>("/auth/me"),
+    enabled: !!accessToken,
+    refetchOnMount: true,
+    refetchInterval: 5 * 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    setUser({
+      id: data.id,
+      email: data.email,
+      fullName: data.fullName,
+      avatarUrl: data.avatarUrl,
+      emailVerified: data.emailVerified,
+      isPlatformAdmin: data.isPlatformAdmin,
+      twoFactorEnabled: data.twoFactorEnabled,
+    });
+  }, [data, setUser]);
 }
 
 async function routeAfterAuth(router: ReturnType<typeof useRouter>) {

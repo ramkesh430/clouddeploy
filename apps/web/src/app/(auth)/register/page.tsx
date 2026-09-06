@@ -4,12 +4,10 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Github, Chrome } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { useRegister } from "@/hooks/use-auth";
 
 const schema = z
@@ -44,19 +42,6 @@ export default function RegisterPage() {
         <CardDescription>Deploy your entire application — frontend, backend, database and more.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" type="button">
-            <Github className="h-4 w-4" /> GitHub
-          </Button>
-          <Button variant="outline" type="button">
-            <Chrome className="h-4 w-4" /> Google
-          </Button>
-        </div>
-        <div className="flex items-center gap-3">
-          <Separator className="flex-1" />
-          <span className="text-xs text-muted-foreground">or</span>
-          <Separator className="flex-1" />
-        </div>
         <form
           className="flex flex-col gap-4"
           onSubmit={handleSubmit((v) => registerAccount.mutate({ fullName: v.fullName, email: v.email, password: v.password }))}

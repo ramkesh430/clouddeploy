@@ -362,18 +362,20 @@ export default function DashboardPage() {
                       <p className="truncate text-xs text-muted-foreground">{p?.framework ?? " "}</p>
                     </div>
                     {p ? <StatusBadge status={p.status} /> : <Skeleton className="h-5 w-16 shrink-0" />}
-                    <a
-                      href={p?.productionUrl ? `https://${p.productionUrl}` : undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hidden shrink-0 items-center gap-1 text-xs text-primary hover:underline sm:flex"
-                    >
-                      {p?.productionUrl && (
-                        <>
-                          {p.productionUrl} <ArrowUpRight className="h-3 w-3" />
-                        </>
-                      )}
-                    </a>
+                    {p?.productionUrl ? (
+                      <a
+                        href={p.productionUrl.startsWith("http") ? p.productionUrl : `https://${p.productionUrl}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hidden shrink-0 items-center gap-1 text-xs text-primary hover:underline sm:flex"
+                      >
+                        {p.productionUrl.replace(/^https?:\/\//, "")} <ArrowUpRight className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="hidden max-w-[14rem] truncate text-xs text-muted-foreground sm:inline">
+                        {p?.domainMessage ?? "Domain configuration pending"}
+                      </span>
+                    )}
                     <span className="hidden shrink-0 text-xs text-muted-foreground md:inline">
                       {p?.lastDeployAt ? formatRelativeTime(p.lastDeployAt) : ""}
                     </span>

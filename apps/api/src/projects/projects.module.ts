@@ -6,9 +6,10 @@ import { AnyAuthGuard } from "../auth/guards/any-auth.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsageModule } from "../usage/usage.module";
 import { InfrastructureModule } from "../infrastructure/infrastructure.module";
+import { DomainsModule } from "../domains/domains.module";
 
 @Module({
-  imports: [UsageModule, InfrastructureModule],
+  imports: [UsageModule, InfrastructureModule, DomainsModule],
   controllers: [ProjectsController],
   providers: [ProjectsService, RolesGuard, AnyAuthGuard, JwtAuthGuard],
   exports: [ProjectsService],

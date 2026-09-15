@@ -53,7 +53,11 @@ export const envSchema = z.object({
 
   WEB_APP_URL: z.string().default("http://localhost:3000"),
   API_URL: z.string().default("http://localhost:4000"),
-  PLATFORM_DOMAIN: z.string().default("clouddeploy.local"),
+  BASE_URL: z.string().optional(),
+  PLATFORM_DOMAIN: z.string().default("clouddeploy.app"),
+  PUBLIC_SERVER_IP: z.string().optional(),
+  DNS_PROVIDER: z.string().optional(),
+  PLATFORM_EDGE_READY: z.string().optional(),
 
   COOKIE_SECRET: z.string().min(32).default("dev-only-cookie-secret-change-me-in-prod!!"),
   ENCRYPTION_KEY: z.string().min(32).default("dev-only-encryption-key-change-me-in-prod!"),

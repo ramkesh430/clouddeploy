@@ -12,6 +12,10 @@ export interface ProjectSummary {
   status: string;
   region: string;
   productionUrl: string | null;
+  assignedHostname?: string;
+  domainStatus?: string;
+  domainReady?: boolean;
+  domainMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   repository: { fullName: string; defaultBranch: string } | null;

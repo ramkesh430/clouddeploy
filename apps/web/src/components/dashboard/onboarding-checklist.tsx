@@ -25,7 +25,7 @@ export function OnboardingChecklist({ summary }: { summary: DashboardSummary }) 
   const [dismissed, setDismissed] = useState(true);
   const { data: domains } = useQuery({
     queryKey: ["domains", active?.id],
-    queryFn: () => api.get<unknown[]>(`/domains?organizationId=${active?.id}`),
+    queryFn: () => api.get<{ data: unknown[] }>(`/domains?organizationId=${active?.id}`),
     enabled: !!active?.id,
   });
 
@@ -40,7 +40,7 @@ export function OnboardingChecklist({ summary }: { summary: DashboardSummary }) 
   const steps: ChecklistStep[] = [
     { label: "Deploy your first project", done: summary.stats.totalProjects > 0, href: "/projects/new" },
     { label: "Ship a successful deployment", done: summary.recentProjects.some((p) => !!p.lastDeployAt), href: "/projects" },
-    { label: "Add a custom domain", done: (domains?.length ?? 0) > 0, href: "/domains" },
+    { label: "Add a custom domain", done: ((domains?.data?.length ?? 0) > 0), href: "/domains" },
     { label: "Invite your team", done: (active?._count?.members ?? 1) > 1, href: "/team" },
   ];
   const doneCount = steps.filter((s) => s.done).length;

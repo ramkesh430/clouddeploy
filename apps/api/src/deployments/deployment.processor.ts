@@ -11,6 +11,7 @@ import { SchedulerService } from "../infrastructure/scheduler.service";
 import { ContainerRuntimeService } from "../infrastructure/container-runtime.service";
 import { GitCloneService } from "./git-clone.service";
 import { ImageBuildService } from "./image-build.service";
+import { DomainsService } from "../domains/domains.service";
 
 const STEP_DELAY_MS = 900;
 
@@ -42,6 +43,7 @@ export class DeploymentProcessor extends WorkerHost {
     private readonly containerRuntime: ContainerRuntimeService,
     private readonly gitClone: GitCloneService,
     private readonly imageBuild: ImageBuildService,
+    private readonly domains: DomainsService,
   ) {
     super();
   }
@@ -227,57 +229,30 @@ export class DeploymentProcessor extends WorkerHost {
         data: { status: "RUNNING" },
       });
 
-      const platformDomain = process.env.PLATFORM_DOMAIN ?? "clouddeploy.app";
       const isPreview = deployment.environment === "PREVIEW";
-      const previewUrl = isPreview && !canDeployReal
-        ? `${this.slugify(deployment.branch)}-${deploymentId.slice(0, 6)}.${platformDomain}`
-        : undefined;
-      // Reconciled below once real containers are up (real path only) —
-      // used for the webhook/notification payloads either way.
-      let finalPreviewUrl = previewUrl;
+      let finalPreviewUrl: string | undefined;
 
       if (!canDeployReal) {
         await this.prisma.deployment.update({
           where: { id: deploymentId },
-          data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl },
+          data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date() },
         });
-        if (isPreview) {
-          await this.log(deploymentId, "INFO", `Preview deployment ready at https://${previewUrl}`);
-        } else {
-          await this.prisma.project.update({
-            where: { id: deployment.projectId },
-            data: { productionUrl: deployment.project.productionUrl ?? `https://${deployment.project.slug}.clouddeploy.app` },
-          });
-        }
       }
 
       for (const service of deployableServices) {
-        if (!canDeployReal && service.port && !service.isPrivate && !service.publicUrl) {
-          await this.prisma.service.update({
-            where: { id: service.id },
-            data: { publicUrl: `https://${service.name}-${deployment.project.slug}.${platformDomain}` },
-          });
-        }
         await this.scheduler.reconcileServiceReplicas(service.id, service.instances, deploymentId);
       }
 
-      if (canDeployReal) {
-        // Real public URLs are only known once reconcileServiceReplicas has
-        // actually started each container (it writes Service.publicUrl
-        // itself) — read them back rather than guessing a template here.
-        const refreshed = await this.prisma.service.findMany({ where: { id: { in: deployableServices.map((s) => s.id) } } });
-        const primaryUrl = refreshed.find((s) => ["WEB_SERVICE", "STATIC_SITE"].includes(s.type))?.publicUrl ?? refreshed.find((s) => s.publicUrl)?.publicUrl;
-        if (isPreview) finalPreviewUrl = primaryUrl ?? undefined;
-        await this.prisma.deployment.update({
-          where: { id: deploymentId },
-          data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl: finalPreviewUrl },
-        });
-        if (primaryUrl && !isPreview) {
-          await this.prisma.project.update({ where: { id: deployment.projectId }, data: { productionUrl: primaryUrl } });
-        }
-        for (const service of refreshed) {
-          if (service.publicUrl) await this.log(deploymentId, "INFO", `${service.name} is live at ${service.publicUrl}`);
-        }
+      const urls = await this.domains.syncAfterDeploy(deployment.projectId);
+      if (isPreview) finalPreviewUrl = urls.liveUrl ?? undefined;
+      await this.prisma.deployment.update({
+        where: { id: deploymentId },
+        data: { status: "LIVE", progressPct: 100, currentStep: "Deploy Live", finishedAt: new Date(), previewUrl: finalPreviewUrl },
+      });
+      if (urls.liveUrl) {
+        await this.log(deploymentId, "INFO", `Live URL: ${urls.liveUrl}`);
+      } else {
+        await this.log(deploymentId, "INFO", `${urls.assignedHostname} is assigned but not public yet — ${urls.domainMessage}`);
       }
 
       this.gateway.emitStatus(deploymentId, { status: "LIVE", progressPct: 100, currentStep: "Deploy Live" });
@@ -407,9 +382,5 @@ export class DeploymentProcessor extends WorkerHost {
 
   private delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  private slugify(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   }
 }

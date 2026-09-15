@@ -80,6 +80,7 @@ npm run dev                     # runs apps/api and apps/web in parallel via Tur
 - API: http://localhost:4000 (Swagger at `/api/docs`, health at `/health`)
 - Web: http://localhost:3000
 - Seeded login: `demo@clouddeploy.dev` / `Password123!` (workspace: `acme-inc`, project: `shopfront`)
+- Platform subdomains are `{slug}.clouddeploy.app` and stay **Pending DNS** until you point wildcard DNS at a public server. See [DNS](docs/phase-3/DNS.md). Locally they will not resolve (NXDOMAIN) — that is expected.
 - Try the deploy wizard right away with **no GitHub account needed**: Create Project → Import GitHub Repository → "Deploy a public repository" → paste any public repo URL (e.g. `laravel/laravel` or `vercel/next-learn`).
 - To exercise the real GitHub OAuth connection (not required for the above), register a GitHub OAuth App with callback URL `http://localhost:4000/api/v1/github/callback` and set `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `apps/api/.env`; add `GITHUB_WEBHOOK_SECRET` too if you want auto-deploy-on-push against a real repo.
 

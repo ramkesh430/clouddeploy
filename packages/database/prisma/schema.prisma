@@ -938,6 +938,8 @@ model Domain {
   environment    EnvironmentTarget @default(PRODUCTION)
   status         DomainStatus      @default(PENDING)
   dnsRecords     Json
+  lastError      String?
+  targetServiceId String?
   verifiedAt     DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt

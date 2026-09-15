@@ -22,6 +22,9 @@ export interface DashboardSummary {
     framework: string | null;
     status: string;
     productionUrl: string | null;
+    assignedHostname?: string;
+    domainReady?: boolean;
+    domainMessage?: string | null;
     lastDeployAt: string | null;
   }>;
   recentDeployments: Array<{

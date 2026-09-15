@@ -270,7 +270,7 @@ async function main() {
       description: "Full-stack e-commerce storefront",
       status: "ACTIVE",
       region: "us-east",
-      productionUrl: "https://shopfront.clouddeploy.app",
+      productionUrl: null,
       createdBy: demoUser.id,
     },
   });
@@ -298,7 +298,7 @@ async function main() {
       port: 3000,
       cpuCores: 0.5,
       ramMb: 512,
-      publicUrl: "https://shopfront.clouddeploy.app",
+      publicUrl: null,
       internalHostname: "frontend.internal",
     },
   });
@@ -317,7 +317,7 @@ async function main() {
       port: 5000,
       cpuCores: 1,
       ramMb: 1024,
-      publicUrl: "https://api.shopfront.clouddeploy.app",
+      publicUrl: null,
       internalHostname: "backend.internal",
     },
   });
@@ -375,14 +375,14 @@ async function main() {
         projectId: project.id,
         hostname: "shopfront.clouddeploy.app",
         type: "PLATFORM",
-        status: "ACTIVE",
-        dnsRecords: {},
-        verifiedAt: new Date(),
+        status: "PENDING",
+        dnsRecords: {
+          wildcard: { type: "A", name: "*.clouddeploy.app", value: "<PUBLIC_SERVER_IP>", ttl: 300 },
+        },
+        verifiedAt: null,
         ssl: {
           create: {
-            status: "ACTIVE",
-            issuedAt: new Date(),
-            expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            status: "PENDING",
           },
         },
       },

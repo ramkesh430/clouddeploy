@@ -4,6 +4,7 @@ import { UsageService } from "../usage/usage.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { ContainerRuntimeService } from "../infrastructure/container-runtime.service";
+import { DomainsService } from "../domains/domains.service";
 
 @Injectable()
 export class ProjectsService {
@@ -11,6 +12,7 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly usage: UsageService,
     private readonly containerRuntime: ContainerRuntimeService,
+    private readonly domains: DomainsService,
   ) {}
 
   /**
@@ -23,7 +25,7 @@ export class ProjectsService {
   async list(organizationId: string, requestingUserId?: string, requestingOrgRole?: string) {
     const restrictToGrantedProjects = requestingUserId && requestingOrgRole && ["DEVELOPER", "VIEWER"].includes(requestingOrgRole);
 
-    return this.prisma.project.findMany({
+    const projects = await this.prisma.project.findMany({
       where: {
         organizationId,
         deletedAt: null,
@@ -33,11 +35,16 @@ export class ProjectsService {
       },
       include: {
         repository: true,
-        services: { select: { id: true, name: true, type: true, framework: true, status: true } },
+        services: { select: { id: true, name: true, type: true, framework: true, status: true, publicUrl: true } },
+        domains: { where: { deletedAt: null } },
         _count: { select: { services: true, deployments: true } },
       },
       orderBy: { createdAt: "desc" },
     });
+    return Promise.all(projects.map(async (project) => {
+      const urls = await this.domains.urlViewForProject(project);
+      return { ...project, productionUrl: urls.liveUrl, assignedHostname: urls.assignedHostname, domainStatus: urls.domainStatus, domainReady: urls.domainReady, domainMessage: urls.domainMessage };
+    }));
   }
 
   async create(organizationId: string, createdBy: string, dto: CreateProjectDto) {
@@ -58,16 +65,20 @@ export class ProjectsService {
     const region = dto.region ?? "us-east";
     await this.assertActiveRegion(region);
 
-    return this.prisma.project.create({
+    const slug = dto.slug;
+    const project = await this.prisma.project.create({
       data: {
         organizationId,
         name: dto.name,
-        slug: dto.slug,
+        slug,
         description: dto.description,
         region,
         createdBy,
       },
     });
+    await this.domains.ensurePlatformDomain(project);
+    const urls = await this.domains.urlViewForProject(project);
+    return { ...project, assignedHostname: urls.assignedHostname, productionUrl: urls.liveUrl, domainStatus: urls.domainStatus, domainReady: urls.domainReady, domainMessage: urls.domainMessage };
   }
 
   async findOne(projectId: string, requestingUserId?: string, requestingOrgRole?: string) {
@@ -93,7 +104,15 @@ export class ProjectsService {
       }
     }
 
-    return project;
+    const urls = await this.domains.urlViewForProject(project);
+    return {
+      ...project,
+      productionUrl: urls.liveUrl,
+      assignedHostname: urls.assignedHostname,
+      domainStatus: urls.domainStatus,
+      domainReady: urls.domainReady,
+      domainMessage: urls.domainMessage,
+    };
   }
 
   async update(projectId: string, dto: UpdateProjectDto) {

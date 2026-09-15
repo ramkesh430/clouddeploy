@@ -54,11 +54,15 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
             <StatusBadge status={p.status} />
           </div>
           <div className="flex items-center gap-2">
-            {p.productionUrl && (
+            {p.productionUrl ? (
               <Button variant="outline" size="sm" asChild>
                 <a href={p.productionUrl.startsWith("http") ? p.productionUrl : `https://${p.productionUrl}`} target="_blank" rel="noreferrer">
                   Open App <ExternalLink className="h-3.5 w-3.5" />
                 </a>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled title={p.domainMessage ?? "Domain configuration pending"}>
+                Open App <ExternalLink className="h-3.5 w-3.5" />
               </Button>
             )}
             <Button size="sm" loading={createDeployment.isPending} onClick={() => createDeployment.mutate({ projectId: p.id })}>
@@ -73,7 +77,11 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted-foreground">
-          {p.productionUrl && <span>{p.productionUrl}</span>}
+          {p.productionUrl ? (
+            <span>{p.productionUrl}</span>
+          ) : (
+            <span>{p.assignedHostname ? `${p.assignedHostname} — ${p.domainMessage ?? "Domain configuration pending"}` : (p.domainMessage ?? "Domain configuration pending")}</span>
+          )}
           {p.repository?.fullName && <span>{p.repository.fullName}</span>}
           <span>{p.repository?.defaultBranch ?? "main"}</span>
           <span>{p.region}</span>

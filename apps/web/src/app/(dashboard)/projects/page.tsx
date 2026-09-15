@@ -134,7 +134,10 @@ export default function ProjectsPage() {
                         <Link href={`/projects/${project.id}`} className="block">
                           <p className="font-medium hover:text-primary">{project.name}</p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {project.productionUrl ?? project.repository?.fullName ?? "Not deployed yet"}
+                            {project.productionUrl
+                              ?? (project.domainMessage
+                                ? `${project.assignedHostname ?? ""} ${project.domainMessage}`.trim()
+                                : project.repository?.fullName ?? "Not deployed yet")}
                           </p>
                         </Link>
                       </td>

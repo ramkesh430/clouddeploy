@@ -1,9 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { DomainsService } from "../domains/domains.service";
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly domains: DomainsService,
+  ) {}
 
   async summary(organizationId: string) {
     const [
@@ -25,9 +29,9 @@ export class DashboardService {
         where: { organizationId, deletedAt: null },
         include: {
           repository: true,
-          services: { select: { framework: true, status: true }, take: 1 },
+          services: { select: { name: true, framework: true, status: true, publicUrl: true, type: true }, take: 8 },
           deployments: { orderBy: { createdAt: "desc" }, take: 1 },
-          domains: { where: { type: "PLATFORM" }, take: 1 },
+          domains: { where: { deletedAt: null } },
         },
         orderBy: { updatedAt: "desc" },
         take: 8,
@@ -52,15 +56,21 @@ export class DashboardService {
         monthlyBandwidthGb: 0,
         monthlyCostUsd: await this.estimateMonthlyCost(organizationId),
       },
-      recentProjects: recentProjects.map((p) => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        repository: p.repository?.fullName ?? null,
-        framework: p.services[0]?.framework ?? null,
-        status: p.status,
-        productionUrl: p.productionUrl ?? p.domains[0]?.hostname ?? null,
-        lastDeployAt: p.deployments[0]?.createdAt ?? null,
+      recentProjects: await Promise.all(recentProjects.map(async (p) => {
+        const urls = await this.domains.urlViewForProject(p);
+        return {
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          repository: p.repository?.fullName ?? null,
+          framework: p.services[0]?.framework ?? null,
+          status: p.status,
+          productionUrl: urls.liveUrl,
+          assignedHostname: urls.assignedHostname,
+          domainReady: urls.domainReady,
+          domainMessage: urls.domainMessage,
+          lastDeployAt: p.deployments[0]?.createdAt ?? null,
+        };
       })),
       recentDeployments: recentDeployments.map((d) => ({
         id: d.id,

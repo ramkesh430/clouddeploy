@@ -95,6 +95,7 @@ export enum DatabaseEngine {
   POSTGRESQL = "POSTGRESQL",
   MYSQL = "MYSQL",
   MARIADB = "MARIADB",
+  MONGODB = "MONGODB",
   REDIS = "REDIS",
 }
 

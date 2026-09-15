@@ -67,10 +67,11 @@ export function Sidebar() {
     return (
       <Link
         href={href}
+        aria-current={active ? "page" : undefined}
         className={cn(
-          "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
           active
-            ? "bg-white/10 text-white"
+            ? "bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-sm"
             : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground",
         )}
       >
@@ -81,15 +82,15 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex h-16 items-center gap-2 px-5">
+    <aside className="sticky top-0 hidden h-screen w-52 shrink-0 flex-col border-r border-white/5 bg-sidebar text-sidebar-foreground md:flex">
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-white/5 px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Boxes className="h-4 w-4" />
         </div>
         <span className="text-sm font-semibold text-white">CloudDeploy</span>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
+      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-2 py-3">
         <div className="flex flex-col gap-1">
           <span className="px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">Platform</span>
           {platformLinks.map((link) => (
@@ -106,7 +107,7 @@ export function Sidebar() {
 
       <div className="flex items-center gap-2.5 border-t border-white/10 px-4 py-3">
         <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-white/10 text-white">
+          <AvatarFallback className="bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-sm">
             {(user?.fullName ?? "U").slice(0, 1).toUpperCase()}
           </AvatarFallback>
         </Avatar>

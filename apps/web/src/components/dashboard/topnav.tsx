@@ -22,8 +22,8 @@ export function TopNav() {
   const { data: unreadCount } = useUnreadCount();
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6">
-      <div className="flex items-center gap-3">
+    <header className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-2 sm:px-5">
+      <div className="flex min-w-0 items-center gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
@@ -43,7 +43,7 @@ export function TopNav() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <button className="flex w-72 items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent">
+        <button className="hidden w-64 items-center lg:flex gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent">
           <Search className="h-3.5 w-3.5" />
           Search projects, deployments...
           <kbd className="ml-auto rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">⌘K</kbd>

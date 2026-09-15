@@ -34,20 +34,25 @@ export default function BillingPage() {
       {!summary?.billingConfigured && (
         <Card className="border-warning/40 bg-warning/5">
           <CardContent className="p-4 text-sm text-warning-foreground">
-            Billing is running in demo mode — Stripe keys aren&apos;t configured in this environment, so checkout will show an error. All plan data below is real; only the payment step needs live Stripe credentials.
+            Billing is running in demo mode — Stripe keys aren&apos;t configured in this environment, so
+            checkout will show an error. All plan data below is real; only the payment step needs live Stripe
+            credentials.
           </CardContent>
         </Card>
       )}
 
       {summary?.subscription && (
         <Card>
-          <CardHeader><CardTitle>Current Plan</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Current Plan</CardTitle>
+          </CardHeader>
           <CardContent className="flex items-center justify-between">
             <div>
               <p className="text-lg font-semibold">{summary.subscription.plan.name}</p>
               <p className="text-sm text-muted-foreground">
                 {summary.subscription.billingPeriod === "yearly" ? "Billed yearly" : "Billed monthly"}
-                {summary.subscription.currentPeriodEnd && ` · renews ${formatRelativeTime(summary.subscription.currentPeriodEnd)}`}
+                {summary.subscription.currentPeriodEnd &&
+                  ` · renews ${formatRelativeTime(summary.subscription.currentPeriodEnd)}`}
               </p>
             </div>
             <StatusBadge status={summary.subscription.status} />
@@ -65,13 +70,19 @@ export default function BillingPage() {
               </CardTitle>
               <p className="text-2xl font-semibold">
                 {plan.priceMonthlyCents === 0 ? "Free" : formatCurrency(plan.priceMonthlyCents / 100)}
-                {plan.priceMonthlyCents > 0 && <span className="text-sm font-normal text-muted-foreground">/mo</span>}
+                {plan.priceMonthlyCents > 0 && (
+                  <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                )}
               </p>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <ul className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                <li className="flex items-center gap-1.5"><Check className="h-3 w-3 text-success" /> {plan.maxProjects} projects</li>
-                <li className="flex items-center gap-1.5"><Check className="h-3 w-3 text-success" /> {plan.maxRamMb} MB RAM</li>
+                <li className="flex items-center gap-1.5">
+                  <Check className="h-3 w-3 text-success" /> {plan.maxProjects} projects
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Check className="h-3 w-3 text-success" /> {plan.maxRamMb} MB RAM
+                </li>
                 {Object.entries(plan.features)
                   .filter(([, v]) => v)
                   .slice(0, 3)
@@ -97,23 +108,44 @@ export default function BillingPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Invoices</CardTitle></CardHeader>
-        <CardContent className="flex flex-col p-0">
-          {(summary?.invoices ?? []).map((inv) => (
-            <div key={inv.id} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <Receipt className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-xs font-medium">{inv.id.slice(0, 12)}</p>
-                <p className="truncate text-xs text-muted-foreground">{formatRelativeTime(inv.createdAt)}</p>
-              </div>
-              <span className="shrink-0 text-sm font-medium">{formatCurrency(inv.amountDueCents / 100)}</span>
-              <StatusBadge status={inv.status} />
-            </div>
-          ))}
-          {(summary?.invoices ?? []).length === 0 && (
+        <CardHeader>
+          <CardTitle>Invoices</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {(summary?.invoices ?? []).length === 0 ? (
             <p className="p-8 text-center text-sm text-muted-foreground">No invoices yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="px-5 py-3 font-medium">Invoice</th>
+                    <th className="px-5 py-3 font-medium">Amount</th>
+                    <th className="px-5 py-3 font-medium">Status</th>
+                    <th className="px-5 py-3 font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(summary?.invoices ?? []).map((inv) => (
+                    <tr key={inv.id} className="border-b border-border/60 last:border-0 hover:bg-muted/40">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <Receipt className="h-4 w-4" />
+                          </div>
+                          <span className="font-mono text-xs">{inv.id.slice(0, 12)}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-medium">{formatCurrency(inv.amountDueCents / 100)}</td>
+                      <td className="px-5 py-3">
+                        <StatusBadge status={inv.status} />
+                      </td>
+                      <td className="px-5 py-3 text-muted-foreground">{formatRelativeTime(inv.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>

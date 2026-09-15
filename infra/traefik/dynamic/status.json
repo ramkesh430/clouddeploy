@@ -1,0 +1,18 @@
+{
+  "http": {
+    "routers": {
+      "public-status": {
+        "rule": "Host(`status.clouddeploy.local`) || Host(`localhost`) && PathPrefix(`/status`)",
+        "service": "web",
+        "entryPoints": ["web"]
+      }
+    },
+    "services": {
+      "web": {
+        "loadBalancer": {
+          "servers": [{ "url": "http://host.docker.internal:3000" }]
+        }
+      }
+    }
+  }
+}

@@ -94,10 +94,6 @@ export class SchedulerService {
         const node = await this.chooseRuntimeNode(service.project.region, service.cpuCores, service.ramMb);
         if (!node) throw new ServiceUnavailableException(`No healthy runtime node in ${service.project.region} has enough CPU/RAM capacity`);
 
-        const started = realImageTag ? await this.containerRuntime.startContainer(service, realImageTag) : null;
-        const simulatedHealthy = !started && process.env.NODE_ENV !== "production" && process.env.SIMULATE_RUNTIME !== "false";
-        const healthy = started ? true : simulatedHealthy;
-
         const container = await this.prisma.$transaction(async (tx) => {
           const created = await tx.container.create({
             data: {
@@ -107,14 +103,8 @@ export class SchedulerService {
               replicaIndex: index,
               cpuCores: service.cpuCores,
               ramMb: service.ramMb,
-              dockerId: started?.dockerId,
-              hostPort: started?.hostPort,
-              tunnelPid: started?.tunnelPid,
-              status: healthy ? "RUNNING" : "CREATING",
-              healthy,
-              privateIp: healthy ? (started ? "127.0.0.1" : node.server.ipAddress) : null,
-              startedAt: healthy ? new Date() : null,
-              lastHealthAt: healthy ? new Date() : null,
+              status: "CREATING",
+              healthy: false,
             },
           });
           await tx.runtimeNode.update({
@@ -124,7 +114,37 @@ export class SchedulerService {
           await tx.serverCommand.create({ data: { serverId: node.serverId, type: "RECONCILE_SERVICE", payload: { serviceId, containerId: created.id, replicaIndex: index } } });
           return created;
         });
-        existing.push(container);
+
+        let started = null;
+        if (realImageTag) {
+          try {
+            started = await this.containerRuntime.startContainer(service, realImageTag, {
+              platformContainerId: container.id,
+              imageDigest: service.imageDigest,
+              imageSignature: service.imageSignature,
+            });
+          } catch (err) {
+            await this.prisma.container.update({ where: { id: container.id }, data: { status: "STOPPED" } });
+            throw err;
+          }
+        }
+
+        const simulatedHealthy = !started && process.env.NODE_ENV !== "production" && process.env.SIMULATE_RUNTIME !== "false";
+        const healthy = started ? true : simulatedHealthy;
+        const updated = await this.prisma.container.update({
+          where: { id: container.id },
+          data: {
+            dockerId: started?.dockerId,
+            hostPort: started?.hostPort,
+            tunnelPid: started?.tunnelPid,
+            status: healthy ? "RUNNING" : "CREATING",
+            healthy,
+            privateIp: healthy ? (started ? "127.0.0.1" : node.server.ipAddress) : null,
+            startedAt: healthy ? new Date() : null,
+            lastHealthAt: healthy ? new Date() : null,
+          },
+        });
+        existing.push(updated);
 
         if (started?.publicUrl) {
           await this.prisma.service.update({ where: { id: serviceId }, data: { publicUrl: started.publicUrl } });

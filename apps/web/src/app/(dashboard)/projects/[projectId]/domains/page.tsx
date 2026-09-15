@@ -20,6 +20,7 @@ export default function ProjectDomainsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [hostname, setHostname] = useState("");
+  const [verifyErrors, setVerifyErrors] = useState<Record<string, string>>({});
 
   const { data: domains } = useQuery({
     queryKey: ["domains", active?.id],
@@ -40,10 +41,16 @@ export default function ProjectDomainsPage() {
   });
 
   const verify = useMutation({
-    mutationFn: (domainId: string) => api.post(`/domains/${domainId}/verify`),
-    onSuccess: () => {
+    mutationFn: (domainId: string) => api.post<{ id: string; status: string; verificationError?: string }>(`/domains/${domainId}/verify`),
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["domains", active?.id] });
-      toast({ title: "Checking DNS and issuing SSL..." });
+      if (data.status === "ACTIVE") {
+        setVerifyErrors((prev) => { const next = { ...prev }; delete next[data.id]; return next; });
+        toast({ title: "Domain verified", description: "DNS is pointed correctly. SSL issuance is next.", variant: "success" });
+      } else {
+        setVerifyErrors((prev) => ({ ...prev, [data.id]: data.verificationError ?? "DNS records don't match yet" }));
+        toast({ title: "DNS not verified yet", description: data.verificationError ?? "DNS records don't match yet", variant: "destructive" });
+      }
     },
   });
 
@@ -75,8 +82,12 @@ export default function ProjectDomainsPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{d.hostname}</span>
                     <StatusBadge status={d.status} />
-                    {d.ssl?.status === "ACTIVE" && (
-                      <span className="flex items-center gap-1 text-xs text-success"><ShieldCheck className="h-3.5 w-3.5" /> SSL Active</span>
+                    {d.status === "ACTIVE" && (
+                      d.ssl?.status === "ACTIVE" ? (
+                        <span className="flex items-center gap-1 text-xs text-success"><ShieldCheck className="h-3.5 w-3.5" /> SSL Active</span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> SSL pending edge deployment</span>
+                      )
                     )}
                   </div>
                   {d.status !== "ACTIVE" && (
@@ -85,6 +96,9 @@ export default function ProjectDomainsPage() {
                     </Button>
                   )}
                 </div>
+                {d.status === "FAILED" && verifyErrors[d.id] && (
+                  <p className="text-xs text-destructive">{verifyErrors[d.id]}</p>
+                )}
                 {d.status !== "ACTIVE" && d.dnsRecords && (
                   <div className="overflow-x-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-xs">
                     {Object.values(d.dnsRecords as Record<string, any>).map((r: any, i: number) => (

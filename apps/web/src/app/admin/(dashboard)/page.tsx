@@ -78,16 +78,16 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white">Admin Dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Admin Dashboard</h1>
           <p className="mt-1 text-sm text-slate-500">Overview of your CloudDeploy platform</p>
         </div>
       </div>
 
-      <div className="grid gap-6 2xl:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
             <StatCard title="Total Users" value={data ? data.users.toLocaleString() : "—"} icon={<Users className="h-5 w-5" />} {...(pctChange(usersGrowth) ?? {})} />
             <StatCard title="Organizations" value={data ? data.organizations.toLocaleString() : "—"} icon={<Building2 className="h-5 w-5" />} {...(pctChange(orgsGrowth) ?? {})} />
             <StatCard title="Projects" value={data ? data.projects.toLocaleString() : "—"} icon={<Package className="h-5 w-5" />} {...(pctChange(projectsGrowth) ?? {})} />
@@ -100,9 +100,9 @@ export default function AdminDashboard() {
 
           <GrowthChart />
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-              <h2 className="mb-6 font-semibold text-white">Resource Usage</h2>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="rounded-lg border border-[#20313e] bg-[#101e28] p-5">
+              <h2 className="mb-4 font-semibold text-white">Resource Usage</h2>
               {data ? (
                 <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
                   <UsageCircle title="CPU" percentage={(data.cpuCapacity.used / (data.cpuCapacity.total || 1)) * 100} caption={`${data.cpuCapacity.used.toFixed(0)} / ${data.cpuCapacity.total.toFixed(0)} cores`} />
@@ -119,8 +119,8 @@ export default function AdminDashboard() {
               )}
             </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-              <h2 className="mb-6 font-semibold text-white">Deployments Overview (30d)</h2>
+            <section className="rounded-lg border border-[#20313e] bg-[#101e28] p-5">
+              <h2 className="mb-4 font-semibold text-white">Deployments Overview (30d)</h2>
               {data ? (
                 <DeploymentsDonut
                   total={data.deployments30d.total}
@@ -137,14 +137,14 @@ export default function AdminDashboard() {
             </section>
           </div>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+          <section className="overflow-hidden rounded-lg border border-[#20313e] bg-[#101e28]">
             <div className="flex items-center justify-between px-5 py-4">
               <h2 className="font-semibold text-white">Recent Deployments</h2>
               <Link href="/admin/deployments" className="text-sm text-blue-400">View all</Link>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-900 text-xs text-slate-500">
+                <thead className="bg-[#101e28] text-xs text-slate-500">
                   <tr>
                     <th className="px-5 py-3 font-medium">ID</th>
                     <th className="px-5 py-3 font-medium">Project</th>
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {(deployments ?? []).map((d) => (
-                    <tr key={d.id} className="border-t border-slate-800/80">
+                    <tr key={d.id} className="border-t border-[#20313e]/80">
                       <td className="px-5 py-3 font-mono text-xs text-white">#{d.id.slice(0, 8)}</td>
                       <td className="px-5 py-3 text-blue-400">{d.project.name}</td>
                       <td className="px-5 py-3 text-slate-400">{d.project.organization?.name ?? "—"}</td>
@@ -174,8 +174,8 @@ export default function AdminDashboard() {
           </section>
         </div>
 
-        <aside className="space-y-6">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+        <aside className="space-y-4">
+          <section className="rounded-lg border border-[#20313e] bg-[#101e28] p-5">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-semibold text-white">System Status</h2>
               <Link href="/status" className="text-xs text-blue-400">View all</Link>
@@ -198,7 +198,7 @@ export default function AdminDashboard() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <section className="rounded-lg border border-[#20313e] bg-[#101e28] p-5">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-semibold text-white">Recent Activity</h2>
               <Link href="/admin/system-logs" className="text-xs text-blue-400">View all</Link>
@@ -220,7 +220,7 @@ export default function AdminDashboard() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <section className="rounded-lg border border-[#20313e] bg-[#101e28] p-5">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-semibold text-white">Recent Alerts</h2>
               <Link href="/admin/abuse" className="text-xs text-blue-400">View all</Link>

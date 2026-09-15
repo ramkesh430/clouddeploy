@@ -8,6 +8,7 @@ import { decryptSecretWithFallback, encryptSecret } from "@clouddeploy/security"
 import { PrismaService } from "../prisma/prisma.service";
 import { PostgresAdminService } from "./postgres-admin.service";
 import { MysqlAdminService } from "./mysql-admin.service";
+import { MongoAdminService } from "./mongo-admin.service";
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
 
@@ -116,6 +117,7 @@ export class DatabaseManagerService {
     private readonly config: ConfigService,
     private readonly postgresAdmin: PostgresAdminService,
     private readonly mysqlAdmin: MysqlAdminService,
+    private readonly mongoAdmin: MongoAdminService,
   ) {}
 
   private async getTenantConnection(databaseId: string): Promise<{ engine: DatabaseEngine; databaseName: string; conn: TenantConnection }> {
@@ -123,6 +125,9 @@ export class DatabaseManagerService {
     if (!database) throw new NotFoundException("Database not found");
     const password = decryptSecretWithFallback(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS"));
 
+    if (database.engine === "MONGODB") {
+      throw new BadRequestException("MongoDB does not speak SQL — list collections via GET /databases/:id/tables instead");
+    }
     if (database.engine === "POSTGRESQL") {
       const pool = this.postgresAdmin.createTenantPool(database.databaseName, database.username, password);
       return { engine: database.engine, databaseName: database.databaseName, conn: new PgTenantConnection(pool) };
@@ -139,6 +144,8 @@ export class DatabaseManagerService {
    * server the way a raw SHOW DATABASES would is a different tenant's data
    * this connection has no business enumerating anyway. */
   async listSchemas(databaseId: string): Promise<string[]> {
+    const database = await this.prisma.database.findFirst({ where: { id: databaseId, deletedAt: null } });
+    if (database?.engine === "MONGODB") return [database.databaseName];
     const { engine, databaseName, conn } = await this.getTenantConnection(databaseId);
     if (engine !== "POSTGRESQL") {
       await conn.end();
@@ -157,6 +164,12 @@ export class DatabaseManagerService {
   }
 
   async listTables(databaseId: string, schema?: string) {
+    const mongo = await this.prisma.database.findFirst({ where: { id: databaseId, deletedAt: null } });
+    if (mongo?.engine === "MONGODB") {
+      const password = decryptSecretWithFallback(mongo.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS"));
+      const names = await this.mongoAdmin.listCollections(mongo.databaseName, mongo.username, password);
+      return names.map((name) => ({ name, type: "COLLECTION", estimatedRows: 0 }));
+    }
     const { engine, databaseName, conn } = await this.getTenantConnection(databaseId);
     const effectiveSchema = engine === "POSTGRESQL" ? (schema ?? "public") : databaseName;
     try {
@@ -393,6 +406,8 @@ export class DatabaseManagerService {
     const password = crypto.randomBytes(18).toString("base64url");
     if (database.engine === "POSTGRESQL") {
       await this.postgresAdmin.createScopedRole(database.databaseName, roleName, password, role, database.username);
+    } else if (database.engine === "MONGODB") {
+      await this.mongoAdmin.createScopedUser(database.databaseName, roleName, password, role);
     } else {
       await this.mysqlAdmin.createScopedUser(database.databaseName, roleName, password, role);
     }
@@ -412,6 +427,8 @@ export class DatabaseManagerService {
 
     if (database.engine === "POSTGRESQL") {
       await this.postgresAdmin.dropScopedRole(database.databaseName, dbUser.username);
+    } else if (database.engine === "MONGODB") {
+      await this.mongoAdmin.dropScopedUser(dbUser.username);
     } else {
       await this.mysqlAdmin.dropScopedUser(dbUser.username);
     }

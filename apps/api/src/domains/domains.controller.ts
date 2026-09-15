@@ -40,6 +40,13 @@ export class DomainsController {
     return this.domainsService.verify(domainId);
   }
 
+  @Post(":domainId/ssl/refresh")
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN, OrgRole.DEVELOPER)
+  @ApiOperation({ summary: "Re-poll Traefik/Let's Encrypt for an issued certificate" })
+  refreshSsl(@Param("domainId") domainId: string) {
+    return this.domainsService.refreshSsl(domainId);
+  }
+
   @Delete(":domainId")
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: "Remove a domain" })

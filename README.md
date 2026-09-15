@@ -10,7 +10,7 @@ This repository is built incrementally. Phase 1, Phase 2, and the Phase 3 contro
 
 - **Monorepo**: npm workspaces + Turborepo, `apps/*` + `packages/*` + `infra/*`.
 - **Database**: Full Prisma schema (`packages/database/prisma/schema.prisma`) covering the entire platform data model — users, orgs, projects, services, deployments, databases, domains, billing, admin, support, templates, etc.
-- **API**: JWT auth with refresh tokens + brute-force lockout, RBAC via `RolesGuard` enforcing per-organization tenant isolation on every route, workspaces + invites, projects/services CRUD with soft delete, a BullMQ-backed deployment pipeline with a WebSocket gateway streaming live logs, encrypted environment variables (AES-256-GCM) with bulk `.env` import, custom domains with simulated DNS/SSL verification, a dashboard aggregation endpoint, `/api/docs` Swagger.
+- **API**: JWT auth with refresh tokens + brute-force lockout, RBAC via `RolesGuard` enforcing per-organization tenant isolation on every route, workspaces + invites, projects/services CRUD with soft delete, a BullMQ-backed deployment pipeline with a WebSocket gateway streaming live logs, encrypted environment variables (AES-256-GCM) with bulk `.env` import, custom domains with real DNS verification (SSL issuance still pending real edge deployment — see known limitations), a dashboard aggregation endpoint, `/api/docs` Swagger.
 - **Web**: landing page, full auth flow, workspace onboarding, dashboard, a working "create project → add services → deploy" wizard, project detail tabs, and a **live deployment screen** with a real WebSocket-driven terminal and progress stepper.
 
 ### Phase 2 — Redis, Backups, Storage, Database Manager, Workers, Cron Jobs, Rollback, Preview Deployments, Billing
@@ -19,9 +19,11 @@ This repository is built incrementally. Phase 1, Phase 2, and the Phase 3 contro
 - **Real SQL editor + table browser**: every query runs through a connection pool authenticated *as the tenant's own role*, not an admin connection — isolation comes from Postgres itself, not application-level filtering. Backed by Monaco in the UI.
 - **Real backups**: `pg_dump`/`psql` shelled out inside the running Postgres container (via `packages/docker`'s exec adapter, since the API host doesn't have Postgres client tools installed) and stored compressed in the S3-compatible backups bucket. Restore is a real drop-and-restore, verified end-to-end (including that ownership/grants survive the round trip).
 - **Real Redis provisioning**: each Redis "instance" is a Redis 6+ ACL user on the one shared Redis server, scoped to its own key prefix (`~<user>:*`) — verified that cross-tenant key access is actually denied by Redis, not just hidden in the UI.
+- **Real MySQL/MariaDB provisioning**: creating a MySQL/MariaDB database runs real `CREATE DATABASE`/`CREATE USER` against a real `mysql:8.4` dev container (`MysqlAdminService`, mirroring `PostgresAdminService`) — tenant connection pools, password rotation, and scoped readonly/readwrite users all work for real, and the table browser/SQL editor connect through the same per-tenant-role pool as Postgres. MariaDB currently shares this same MySQL 8.4 server (`mysql2` speaks its wire protocol too) rather than a genuinely separate MariaDB instance.
 - **Real object storage**: buckets map 1:1 to real MinIO/S3 buckets via `packages/storage`'s S3Adapter (swappable to Cloudflare R2 or real S3 by changing the endpoint). Upload, folder navigation, and presigned download URLs all verified against real files.
 - **Real cron scheduling**: BullMQ Job Schedulers (not `setInterval`) drive cron jobs on their actual cron expression; command *execution* is simulated (real arbitrary command execution belongs on an isolated runtime node, never the control plane — see section 91 on build sandboxing).
 - **Real rollback**: rolling back reuses the target deployment's already-built Docker image (`dockerImageTag`/`registryPath`) instead of rebuilding — the deployment pipeline detects a pre-populated `SUCCEEDED` Build row and skips straight past the clone/build/image steps to "Start Containers", verified end-to-end.
+- **Real application builds and containers**: for a project with a connected GitHub repository and Node/Bun/Docker-runtime services, deployments run a real `git clone` (`GitCloneService`), a real `docker build` (`ImageBuildService`), and a real `docker run` on this machine's Docker daemon exposed via a free per-container `cloudflared` tunnel (`ContainerRuntimeService`) — no shared domain is owned, so each service gets its own real public HTTPS URL instead of a template pointing at `clouddeploy.app`. Rollbacks and template-marketplace one-click deploys reuse this same real path (the already-built or public image is stamped onto the service and actually run) instead of only the fresh-build case. Every other project (no connected repo, or an unsupported runtime) keeps the original simulated pipeline, with a clear log line explaining why.
 - **Preview deployments**: driven by real GitHub pull-request webhooks (opened → deploy, synchronize → redeploy, closed → teardown) rather than just branch naming, with each PR getting its own preview URL and a configurable teardown delay (`PREVIEW_CLEANUP_DELAY_MS`, default 30 min) scheduled as a real BullMQ delayed job — verified by inspecting the job in Redis and by forcing a short delay to observe real teardown.
 - **Billing**: real Stripe SDK integration (checkout session, customer portal, webhook handler with signature verification) that degrades gracefully with a clear error when Stripe keys aren't configured, rather than faking success — verified both the real-data paths (plans, billing summary) and the graceful-failure path.
 
@@ -58,18 +60,18 @@ This repository is built incrementally. Phase 1, Phase 2, and the Phase 3 contro
 - **Developer platform**: versioned `/api/v1`, plan-aware scoped API keys, `@clouddeploy/sdk`, and a `clouddeploy` CLI supporting auth, projects, deploy, logs, env, domains, databases, and rollback.
 - **Operating documentation**: [architecture](docs/phase-3/ARCHITECTURE.md), [schema](docs/phase-3/DATABASE_SCHEMA.md), [API](docs/phase-3/API.md), [infrastructure](docs/phase-3/INFRASTRUCTURE.md), [security](docs/phase-3/SECURITY_REVIEW.md), [scaling](docs/phase-3/SCALING.md), [production](docs/phase-3/PRODUCTION_DEPLOYMENT.md), [disaster recovery](docs/phase-3/DISASTER_RECOVERY.md), and [known limitations](docs/phase-3/KNOWN_LIMITATIONS.md).
 
-The Phase 1/2 backing services described above are real. Phase 3's control-plane state machines and product/API surfaces are working, while local arbitrary application builds and runtime containers still use the simulation adapter; the production worker/agent sandbox, telemetry collector, and edge deployment are explicit launch gates. MySQL/MariaDB and MongoDB provider provisioning also require production providers; PostgreSQL is fully implemented locally. See [known limitations](docs/phase-3/KNOWN_LIMITATIONS.md).
+The Phase 1/2 backing services described above are real. Phase 3's control-plane state machines and product/API surfaces are working. Local application builds and runtime containers are real for a connected-repo project using Node/Bun/Docker services — including rollbacks and template-marketplace deploys — and those containers are sandboxed (dropped caps, no-new-privileges, digest+HMAC verification) and labeled for live abuse telemetry. PostgreSQL, MySQL/MariaDB, and MongoDB provisioning are implemented locally. Let's Encrypt issuance is wired through Traefik ACME and only marked ACTIVE when Traefik actually has a certificate. Remaining operator gates (independent pentest, production DNS/port 80, live Stripe products, scheduled multi-region DR) are listed in [launch readiness](docs/phase-3/LAUNCH_READINESS.md). See [known limitations](docs/phase-3/KNOWN_LIMITATIONS.md).
 
 ## What's next
 
-The immediate launch slice is the hardened BuildKit worker/runtime agent, production telemetry/abuse collectors, Redis-backed distributed rate limiting, and production-equivalent acceptance/load/security testing. The readiness checklist tracks the exact gates.
+Operator production cutover: live Stripe products, `status.clouddeploy.app` DNS, Traefik on port 80 for HTTP-01, independent pentest, and a scheduled multi-region DR exercise. The readiness checklist tracks the exact remaining gates.
 
 ## Getting started
 
 ```bash
 cp .env.example apps/api/.env   # already done for local dev with dev-only secrets
 npm install
-npm run docker:up               # Postgres, Redis, MinIO, Mailpit, Traefik, registry, Prometheus, Grafana, Loki
+npm run docker:up               # Postgres, MySQL, MongoDB, Redis, MinIO, Mailpit, Traefik, registry, Prometheus, Grafana, Loki
 npm run db:migrate --workspace=@clouddeploy/database
 npm run db:seed --workspace=@clouddeploy/database
 npm run dev                     # runs apps/api and apps/web in parallel via Turborepo
@@ -88,8 +90,8 @@ apps/
   web/            Next.js frontend
   api/             NestJS control-plane API
                    (the separate super-admin route tree lives in apps/web/src/app/admin)
-  build-worker/    Dedicated build process (not yet built — simulated inside apps/api for now)
-  runtime-agent/   Container/Traefik orchestration agent (not yet built)
+  build-worker/    Dedicated sandboxed builder (BullMQ `builds` queue; API can still build in-process)
+  runtime-agent/   Host/container telemetry agent (labels: com.clouddeploy.container-id)
 
 packages/
   types/           Shared enums, DTO-adjacent interfaces, resource presets

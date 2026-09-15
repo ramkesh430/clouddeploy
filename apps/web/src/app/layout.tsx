@@ -33,9 +33,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`dark ${fontSans.variable} ${fontMono.variable}`} suppressHydrationWarning>
       <head>
-        {/* Runs before hydration so the stored/system theme applies before
+        {/* Runs before hydration so the stored/default theme applies before
             first paint — without this, every load would flash light mode
             for users who chose dark. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />

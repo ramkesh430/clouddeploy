@@ -14,9 +14,9 @@ export function AccessDenied() {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#07101c] px-4 text-slate-200">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/15 text-red-400">
+    <div className="flex min-h-screen items-center justify-center bg-[#07121a] px-4 text-slate-200">
+      <div className="w-full max-w-md rounded-lg border border-[#20313e] bg-[#101e28] p-8 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-red-500/15 text-red-400">
           <ShieldAlert className="h-6 w-6" />
         </div>
         <h1 className="mt-4 text-lg font-semibold text-white">Platform administrator access required</h1>

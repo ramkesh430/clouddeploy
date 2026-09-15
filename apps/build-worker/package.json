@@ -1,0 +1,27 @@
+{
+  "name": "@clouddeploy/build-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dedicated sandboxed build process: docker build with BuildKit, non-root images, digest pinning, HMAC signatures, and Trivy/policy scanning.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@clouddeploy/docker": "*",
+    "bullmq": "^5.13.2",
+    "ioredis": "^5.4.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": { "node": ">=20" }
+}

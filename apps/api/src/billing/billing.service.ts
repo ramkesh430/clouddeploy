@@ -205,6 +205,15 @@ export class BillingService {
             },
           });
         }
+        if (event.type === "invoice.payment_failed") {
+          const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+          if (subId) {
+            const existing = await this.prisma.subscription.findFirst({ where: { stripeSubscriptionId: subId } });
+            if (existing) {
+              await this.prisma.subscription.update({ where: { id: existing.id }, data: { status: "PAST_DUE" } });
+            }
+          }
+        }
         break;
       }
       default:

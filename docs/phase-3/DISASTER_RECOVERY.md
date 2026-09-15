@@ -4,6 +4,8 @@
 
 Set contractual RPO/RTO per plan. A reasonable starting target is control-plane RPO 5 minutes/RTO 60 minutes and customer database targets based on the purchased backup tier. Validate targets through scheduled exercises.
 
+A local/staging drill that actually dumps Postgres, restores into a throwaway database, and checks API health lives at `scripts/disaster-recovery-drill.sh`.
+
 ## Control-plane restore
 
 Provision clean API/web/worker infrastructure from versioned IaC, restore PostgreSQL to the selected PITR point, restore Redis only when required for durable queue recovery, deploy the matching application image, run migration status checks, and reconcile queued/running operations before reopening writes.

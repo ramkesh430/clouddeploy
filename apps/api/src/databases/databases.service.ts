@@ -9,14 +9,15 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateDatabaseDto } from "./dto/create-database.dto";
 import { PostgresAdminService } from "./postgres-admin.service";
 import { MysqlAdminService } from "./mysql-admin.service";
+import { MongoAdminService } from "./mongo-admin.service";
 import { PostgresBackupService } from "./postgres-backup.service";
 import { WebhooksService } from "../webhooks/webhooks.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsageService } from "../usage/usage.service";
 import { ActivityLogService } from "../activity-log/activity-log.service";
 
-const DEFAULT_PORTS: Record<string, number> = { POSTGRESQL: 5432, MYSQL: 3306, MARIADB: 3306 };
-const DEFAULT_VERSIONS: Record<string, string> = { POSTGRESQL: "16", MYSQL: "8.4", MARIADB: "11" };
+const DEFAULT_PORTS: Record<string, number> = { POSTGRESQL: 5432, MYSQL: 3306, MARIADB: 3306, MONGODB: 27017 };
+const DEFAULT_VERSIONS: Record<string, string> = { POSTGRESQL: "16", MYSQL: "8.4", MARIADB: "11", MONGODB: "7" };
 
 export const DATABASE_BACKUPS_QUEUE = "database-backups";
 
@@ -35,6 +36,7 @@ export class DatabasesService {
     private readonly config: ConfigService,
     private readonly postgresAdmin: PostgresAdminService,
     private readonly mysqlAdmin: MysqlAdminService,
+    private readonly mongoAdmin: MongoAdminService,
     private readonly postgresBackup: PostgresBackupService,
     private readonly webhooks: WebhooksService,
     private readonly notifications: NotificationsService,
@@ -130,7 +132,9 @@ export class DatabasesService {
     // MariaDB's wire protocol too.
     const provision = dto.engine === "POSTGRESQL"
       ? this.postgresAdmin.createTenantDatabase(databaseName, username, password)
-      : this.mysqlAdmin.createTenantDatabase(databaseName, username, password);
+      : dto.engine === "MONGODB"
+        ? this.mongoAdmin.createTenantDatabase(databaseName, username, password)
+        : this.mysqlAdmin.createTenantDatabase(databaseName, username, password);
     provision
       .then(async () => {
         await this.prisma.database.update({ where: { id: database.id }, data: { status: "RUNNING" } });
@@ -176,6 +180,7 @@ export class DatabasesService {
 
     if (database.status === "RUNNING") {
       if (database.engine === "POSTGRESQL") await this.postgresAdmin.rotateTenantPassword(database.username, newPassword);
+      else if (database.engine === "MONGODB") await this.mongoAdmin.rotateTenantPassword(database.username, newPassword);
       else await this.mysqlAdmin.rotateTenantPassword(database.username, newPassword);
     }
 
@@ -203,39 +208,70 @@ export class DatabasesService {
 
     const s3Key = `backups/${databaseId}/${backup.id}.sql.gz`;
 
+    const finishOk = async (sizeBytes: number) => {
+      await this.prisma.databaseBackup.update({
+        where: { id: backup.id },
+        data: { status: "COMPLETED", finishedAt: new Date(), sizeBytes: BigInt(sizeBytes), s3Key },
+      });
+      await this.onBackupCompleted(database, backup.id);
+    };
+    const finishErr = async (err: Error) => {
+      this.logger.error(`Backup failed for database ${databaseId}: ${err.message}`);
+      await this.prisma.databaseBackup.update({
+        where: { id: backup.id },
+        data: { status: "FAILED", finishedAt: new Date() },
+      });
+      await this.onBackupFailed(database, backup.id, err.message);
+    };
+
     if (database.engine === "POSTGRESQL") {
-      this.postgresBackup
-        .createBackup(database.databaseName, s3Key)
-        .then(async ({ sizeBytes }) => {
-          await this.prisma.databaseBackup.update({
-            where: { id: backup.id },
-            data: { status: "COMPLETED", finishedAt: new Date(), sizeBytes: BigInt(sizeBytes), s3Key },
+      this.postgresBackup.createBackup(database.databaseName, s3Key).then(({ sizeBytes }) => finishOk(sizeBytes)).catch(finishErr);
+    } else if (database.engine === "MONGODB") {
+      this.mongoAdmin
+        .dumpDatabase(database.databaseName)
+        .then(async (archive) => {
+          const zlib = await import("node:zlib");
+          const compressed = zlib.gzipSync(archive);
+          const { S3Adapter } = await import("@clouddeploy/storage");
+          const s3 = new S3Adapter({
+            endpoint: this.config.getOrThrow("S3_ENDPOINT"),
+            region: this.config.get("S3_REGION") ?? "us-east-1",
+            accessKeyId: this.config.getOrThrow("S3_ACCESS_KEY"),
+            secretAccessKey: this.config.getOrThrow("S3_SECRET_KEY"),
           });
-          await this.onBackupCompleted(database, backup.id);
+          const bucket = this.config.get<string>("S3_BACKUPS_BUCKET") ?? "clouddeploy-backups";
+          await s3.ensureBucket(bucket);
+          await s3.putObject(bucket, s3Key, compressed, "application/gzip");
+          await finishOk(compressed.length);
         })
-        .catch(async (err) => {
-          this.logger.error(`Backup failed for database ${databaseId}: ${err.message}`);
-          await this.prisma.databaseBackup.update({
-            where: { id: backup.id },
-            data: { status: "FAILED", finishedAt: new Date() },
-          });
-          await this.onBackupFailed(database, backup.id, err.message);
-        });
+        .catch(finishErr);
     } else {
-      setTimeout(async () => {
-        await this.prisma.databaseBackup
-          .update({
-            where: { id: backup.id },
-            data: {
-              status: "COMPLETED",
-              finishedAt: new Date(),
-              sizeBytes: BigInt(Math.floor(Math.random() * 500_000_000)),
-              s3Key: `backups/${databaseId}/${backup.id}.dump.gz.enc`,
-            },
-          })
-          .catch(() => undefined);
-        await this.onBackupCompleted(database, backup.id);
-      }, 2500);
+      const { execInContainer } = await import("@clouddeploy/docker");
+      execInContainer(this.config.get<string>("MYSQL_CONTAINER_NAME") ?? "clouddeploy-mysql-1", [
+        "mysqldump",
+        "-uroot",
+        "-pclouddeploy",
+        "--single-transaction",
+        "--routines",
+        database.databaseName,
+      ])
+        .then(async (result) => {
+          if (result.exitCode !== 0) throw new Error(result.stderr.slice(0, 2000));
+          const zlib = await import("node:zlib");
+          const compressed = zlib.gzipSync(result.stdout);
+          const { S3Adapter } = await import("@clouddeploy/storage");
+          const s3 = new S3Adapter({
+            endpoint: this.config.getOrThrow("S3_ENDPOINT"),
+            region: this.config.get("S3_REGION") ?? "us-east-1",
+            accessKeyId: this.config.getOrThrow("S3_ACCESS_KEY"),
+            secretAccessKey: this.config.getOrThrow("S3_SECRET_KEY"),
+          });
+          const bucket = this.config.get<string>("S3_BACKUPS_BUCKET") ?? "clouddeploy-backups";
+          await s3.ensureBucket(bucket);
+          await s3.putObject(bucket, s3Key, compressed, "application/gzip");
+          await finishOk(compressed.length);
+        })
+        .catch(finishErr);
     }
 
     return backup;
@@ -289,6 +325,26 @@ export class DatabasesService {
           this.logger.error(`Restore failed for database ${databaseId}: ${err.message}`);
           await this.prisma.database.update({ where: { id: databaseId }, data: { status: "FAILED" } });
         });
+    } else if (database.engine === "MONGODB") {
+      const { S3Adapter } = await import("@clouddeploy/storage");
+      const zlib = await import("node:zlib");
+      const s3 = new S3Adapter({
+        endpoint: this.config.getOrThrow("S3_ENDPOINT"),
+        region: this.config.get("S3_REGION") ?? "us-east-1",
+        accessKeyId: this.config.getOrThrow("S3_ACCESS_KEY"),
+        secretAccessKey: this.config.getOrThrow("S3_SECRET_KEY"),
+      });
+      const bucket = this.config.get<string>("S3_BACKUPS_BUCKET") ?? "clouddeploy-backups";
+      s3.getObjectBuffer(bucket, backup.s3Key)
+        .then(async (compressed) => {
+          const archive = zlib.gunzipSync(compressed);
+          await this.mongoAdmin.restoreDatabase(database.databaseName, archive);
+          await this.prisma.database.update({ where: { id: databaseId }, data: { status: "RUNNING" } });
+        })
+        .catch(async (err) => {
+          this.logger.error(`Restore failed for database ${databaseId}: ${err.message}`);
+          await this.prisma.database.update({ where: { id: databaseId }, data: { status: "FAILED" } });
+        });
     } else {
       setTimeout(() => {
         this.prisma.database.update({ where: { id: databaseId }, data: { status: "RUNNING" } }).catch(() => undefined);
@@ -305,7 +361,9 @@ export class DatabasesService {
     const database = await this.assertExists(databaseId);
     const drop = database.engine === "POSTGRESQL"
       ? this.postgresAdmin.dropTenantDatabase(database.databaseName, database.username)
-      : this.mysqlAdmin.dropTenantDatabase(database.databaseName, database.username);
+      : database.engine === "MONGODB"
+        ? this.mongoAdmin.dropTenantDatabase(database.databaseName, database.username)
+        : this.mysqlAdmin.dropTenantDatabase(database.databaseName, database.username);
     await drop.catch((err) => {
       this.logger.error(`Failed to drop ${database.engine} database "${database.databaseName}": ${err.message}`);
     });
@@ -316,6 +374,9 @@ export class DatabasesService {
 
   private buildConnectionUrl(database: { engine: string; username: string; passwordCipher: string; privateHost: string; port: number; databaseName: string }) {
     const password = decryptSecretWithFallback(database.passwordCipher, this.config.getOrThrow("ENCRYPTION_KEY"), this.config.get("ENCRYPTION_KEY_PREVIOUS"));
+    if (database.engine === "MONGODB") {
+      return `mongodb://${database.username}:${password}@${database.privateHost}:${database.port}/${database.databaseName}?authSource=admin`;
+    }
     const scheme = database.engine === "POSTGRESQL" ? "postgresql" : "mysql";
     return `${scheme}://${database.username}:${password}@${database.privateHost}:${database.port}/${database.databaseName}`;
   }

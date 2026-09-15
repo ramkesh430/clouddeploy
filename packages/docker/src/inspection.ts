@@ -22,10 +22,10 @@ export interface LabeledContainer {
 
 /**
  * Finds real, currently-running Docker containers carrying the given label
- * key (the runtime-agent uses `com.clouddeploy.container-id`, set on every
- * container the control plane provisions, to the platform's own
- * `Container.id`). This is how the agent maps a live Docker container back
- * to the platform record it should report telemetry against.
+ * key (the runtime-agent uses `com.clouddeploy.container-id`, set by
+ * `ContainerRuntimeService.startContainer` to the platform `Container.id`).
+ * This is how the agent maps a live Docker container back to the platform
+ * record it should report telemetry against.
  */
 export async function listContainersByLabel(labelKey: string): Promise<LabeledContainer[]> {
   const { stdout, exitCode } = await run(["ps", "--filter", `label=${labelKey}`, "--format", "{{.ID}}\t{{.Names}}\t{{.Label \"" + labelKey + "\"}}"]);

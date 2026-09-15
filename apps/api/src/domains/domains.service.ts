@@ -1,13 +1,16 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { promises as dns } from "node:dns";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateDomainDto } from "./dto/create-domain.dto";
+import { SslIssuanceService } from "../infrastructure/ssl-issuance.service";
 
 @Injectable()
 export class DomainsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly ssl: SslIssuanceService,
   ) {}
 
   async list(organizationId: string) {
@@ -51,36 +54,80 @@ export class DomainsService {
   }
 
   /**
-   * Simulated DNS verification + SSL issuance. The real implementation
-   * resolves the TXT/A records via DNS and drives Let's Encrypt through
-   * Traefik's ACME resolver (see infra/traefik).
+   * Real DNS verification: actually resolves the TXT ownership record and
+   * the apex A record over the network and only marks the domain ACTIVE if
+   * both genuinely match what `create()` asked the user to configure —
+   * previously this just waited 4 seconds and marked every domain ACTIVE
+   * unconditionally, regardless of whether the user had touched DNS at all.
+   *
+   * SSL is deliberately left PENDING rather than faked ACTIVE: real
+   * issuance needs Traefik's ACME resolver to complete an HTTP-01/DNS-01
+   * challenge against this hostname, which only works once the domain
+   * really resolves to a publicly reachable edge (see
+   * `TRAEFIK_DYNAMIC_CONFIG_PATH` and docs/phase-3/KNOWN_LIMITATIONS.md) —
+   * that's an operator/edge-deployment step this API process can't perform
+   * or observe on its own, so claiming ACTIVE here would just be a
+   * differently-shaped version of the same fake-success bug.
    */
   async verify(domainId: string) {
     const domain = await this.findOne(domainId);
     await this.prisma.domain.update({ where: { id: domainId }, data: { status: "VERIFYING" } });
 
-    setTimeout(async () => {
-      await this.prisma.domain.update({
-        where: { id: domainId },
-        data: { status: "ACTIVE", verifiedAt: new Date() },
-      });
-      await this.prisma.sSLRecord.upsert({
-        where: { domainId },
-        create: {
-          domainId,
-          status: "ACTIVE",
-          issuedAt: new Date(),
-          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-        },
-        update: {
-          status: "ACTIVE",
-          issuedAt: new Date(),
-          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-        },
-      });
-    }, 4000);
+    const { ok, reasons } = await this.checkDns(domain.hostname, domain.dnsRecords as { txt: { value: string }; a: { value: string } });
 
-    return { ...domain, status: "VERIFYING" };
+    if (!ok) {
+      const failed = await this.prisma.domain.update({
+        where: { id: domainId },
+        data: { status: "FAILED" },
+        include: { ssl: true },
+      });
+      return { ...failed, verificationError: reasons.join("; ") };
+    }
+
+    const verified = await this.prisma.domain.update({
+      where: { id: domainId },
+      data: { status: "ACTIVE", verifiedAt: new Date() },
+      include: { ssl: true },
+    });
+    const ssl = await this.ssl.issueForDomain(domainId);
+    const fresh = await this.prisma.domain.findFirst({ where: { id: domainId }, include: { ssl: true } });
+    return { ...(fresh ?? verified), sslIssuance: ssl };
+  }
+
+  async refreshSsl(domainId: string) {
+    await this.findOne(domainId);
+    const ssl = await this.ssl.issueForDomain(domainId);
+    const domain = await this.findOne(domainId);
+    return { ...domain, sslIssuance: ssl };
+  }
+
+  /** Resolves the TXT ownership token and the apex A record for real over
+   * DNS. Missing/mismatched records fail closed with a human-readable
+   * reason rather than throwing — DNS not having propagated yet is the
+   * expected, common case for a domain a user just configured. */
+  private async checkDns(hostname: string, records: { txt: { value: string }; a: { value: string } }): Promise<{ ok: boolean; reasons: string[] }> {
+    const reasons: string[] = [];
+
+    try {
+      const txtRecords = await dns.resolveTxt(`_clouddeploy-verify.${hostname}`);
+      const flattened = txtRecords.map((chunks) => chunks.join(""));
+      if (!flattened.some((value) => value === records.txt.value)) {
+        reasons.push(`TXT record at _clouddeploy-verify.${hostname} doesn't match the expected verification token yet`);
+      }
+    } catch {
+      reasons.push(`TXT record at _clouddeploy-verify.${hostname} not found — add the TXT record shown below and wait for DNS to propagate`);
+    }
+
+    try {
+      const addresses = await dns.resolve4(hostname);
+      if (!addresses.includes(records.a.value)) {
+        reasons.push(`A record for ${hostname} resolves to ${addresses.join(", ")}, not the platform IP ${records.a.value}`);
+      }
+    } catch {
+      reasons.push(`A record for ${hostname} not found — point it at the platform IP shown below`);
+    }
+
+    return { ok: reasons.length === 0, reasons };
   }
 
   async remove(domainId: string) {

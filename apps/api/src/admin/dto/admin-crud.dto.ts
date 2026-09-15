@@ -82,3 +82,11 @@ export class ActivateSubscriptionDto {
   @IsOptional() @IsString() billingPeriod?: string;
   @IsOptional() @IsEnum(SubscriptionStatus) status?: SubscriptionStatus;
 }
+
+export class UpdatePlatformSettingsDto {
+  @IsOptional() @IsString() @MinLength(1) platformName?: string;
+  @IsOptional() @IsEmail() supportEmail?: string;
+  @IsOptional() @IsString() defaultRegion?: string;
+  @IsOptional() @IsBoolean() maintenanceMode?: boolean;
+  @IsOptional() @IsString() maintenanceMessage?: string;
+}

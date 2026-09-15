@@ -53,7 +53,7 @@ export function GrowthChart() {
   const latest = points[points.length - 1]?.value;
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+    <section className="rounded-lg border border-[#20313e] bg-[#101e28] p-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="font-semibold text-white">Platform Growth</h2>

@@ -20,21 +20,21 @@ describe("Sidebar", () => {
     (usePathname as jest.Mock).mockReturnValue("/projects");
     render(<Sidebar />);
     const projectsLink = screen.getByRole("link", { name: /projects/i });
-    expect(projectsLink.className).toContain("bg-white/10");
+    expect(projectsLink).toHaveAttribute("aria-current", "page");
   });
 
   it("highlights a nested route under its parent link", () => {
     (usePathname as jest.Mock).mockReturnValue("/projects/abc123/services");
     render(<Sidebar />);
     const projectsLink = screen.getByRole("link", { name: /projects/i });
-    expect(projectsLink.className).toContain("bg-white/10");
+    expect(projectsLink).toHaveAttribute("aria-current", "page");
   });
 
   it("does not highlight unrelated links", () => {
     (usePathname as jest.Mock).mockReturnValue("/projects");
     render(<Sidebar />);
     const billingLink = screen.getByRole("link", { name: /billing/i });
-    expect(billingLink.className).not.toContain("bg-white/10");
+    expect(billingLink).not.toHaveAttribute("aria-current");
   });
 
   it("shows the current user's name and email", () => {

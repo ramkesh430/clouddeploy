@@ -34,6 +34,23 @@ services:
       timeout: 5s
       retries: 10
 
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    command: ["mongod", "--auth", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: clouddeploy
+      MONGO_INITDB_ROOT_PASSWORD: clouddeploy
+    ports:
+      - "${MONGO_PORT:-27018}:27017"
+    volumes:
+      - clouddeploy_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "clouddeploy", "-p", "clouddeploy", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -147,6 +164,7 @@ services:
 volumes:
   clouddeploy_postgres_data:
   clouddeploy_mysql_data:
+  clouddeploy_mongo_data:
   clouddeploy_redis_data:
   clouddeploy_minio_data:
   clouddeploy_registry_data:

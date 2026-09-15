@@ -14,6 +14,7 @@ import {
   UpdateAdminUserDto,
   UpdateOrganizationDto,
   UpdatePlanDto,
+  UpdatePlatformSettingsDto,
   UpdateSubscriptionDto,
 } from "./dto/admin-crud.dto";
 
@@ -240,6 +241,27 @@ export class AdminService {
       this.prisma.secretAccessAudit.findMany({ include: { user: { select: { email: true } }, secret: { select: { scope: true, key: true } } }, orderBy: { createdAt: "desc" }, take: 25 }),
     ]);
     return { twoFactorUsers, suspiciousLogins, activeApiKeys, ipRestrictedKeys, ssoOrganizations, recentSecretAccess };
+  }
+
+  /** There is exactly one settings row platform-wide, addressed by the
+   * fixed "singleton" id — created on first read so a fresh environment
+   * doesn't need a seed step just to render the settings page. */
+  async getSettings() {
+    return this.prisma.platformSetting.upsert({
+      where: { id: "singleton" },
+      update: {},
+      create: { id: "singleton" },
+    });
+  }
+
+  async updateSettings(dto: UpdatePlatformSettingsDto, currentUserId: string) {
+    const settings = await this.prisma.platformSetting.upsert({
+      where: { id: "singleton" },
+      update: { ...dto, updatedById: currentUserId },
+      create: { id: "singleton", ...dto, updatedById: currentUserId },
+    });
+    await this.audit(currentUserId, "platform_settings.update", "PlatformSetting", settings.id, dto);
+    return settings;
   }
 
   /** Every admin mutation goes through here afterward — a missed audit

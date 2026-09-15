@@ -35,11 +35,11 @@ function AdminGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#07101c] text-slate-200">
+    <div className="min-h-screen bg-[#07121a] text-slate-200">
       <div className="flex min-h-screen">
         <AdminSidebar />
 
-        <main className="min-w-0 flex-1 lg:ml-[260px]">
+        <main className="min-w-0 flex-1 lg:ml-[216px]">
           {!user?.twoFactorEnabled && (
             <div className="flex items-center justify-center gap-3 bg-amber-500/15 px-6 py-2 text-center text-xs text-amber-300">
               Two-factor authentication is required to create, edit, or delete anything in the admin panel.
@@ -48,11 +48,11 @@ function AdminGate({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           )}
-          <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-800 bg-[#07101c]/95 px-6 backdrop-blur xl:px-8">
+          <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-[#20313e] bg-[#07121a]/95 px-4 backdrop-blur xl:px-5">
             <AdminSearch />
 
             <div className="ml-auto flex items-center gap-3">
-              <Link href="/admin/abuse" className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
+              <Link href="/admin/abuse" className="relative flex h-8 w-8 items-center justify-center rounded-md border border-[#20313e] bg-[#101e28]">
                 <Bell className="h-4 w-4" />
                 {openCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
@@ -61,7 +61,7 @@ function AdminGate({ children }: { children: React.ReactNode }) {
                 )}
               </Link>
 
-              <Link href="/admin/security" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
+              <Link href="/admin/security" className="flex h-8 w-8 items-center justify-center rounded-md border border-[#20313e] bg-[#101e28]">
                 <Settings className="h-4 w-4" />
               </Link>
 
@@ -77,7 +77,7 @@ function AdminGate({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <div className="p-6 xl:p-8">{children}</div>
+          <div className="p-4 xl:p-5">{children}</div>
         </main>
       </div>
     </div>

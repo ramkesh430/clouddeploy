@@ -12,6 +12,7 @@ export const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1),
   MYSQL_URL: z.string().min(1).optional(),
+  MONGO_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1),
 
   JWT_SECRET: z.string().min(32),
@@ -43,6 +44,12 @@ export const envSchema = z.object({
 
   REGISTRY_URL: z.string().default("localhost:5001"),
   TRAEFIK_API: z.string().default("http://localhost:8090"),
+  TRAEFIK_DYNAMIC_CONFIG_PATH: z.string().optional(),
+  PLATFORM_INGRESS_IP: z.string().optional(),
+  MONGO_CONTAINER_NAME: z.string().default("clouddeploy-mongo-1"),
+  MYSQL_CONTAINER_NAME: z.string().default("clouddeploy-mysql-1"),
+  TRIVY_REQUIRED: z.string().optional(),
+  SANDBOX_READ_ONLY: z.string().optional(),
 
   WEB_APP_URL: z.string().default("http://localhost:3000"),
   API_URL: z.string().default("http://localhost:4000"),
@@ -76,5 +83,17 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
       .join("\n");
     throw new Error(`Invalid environment configuration:\n${formatted}`);
   }
-  return result.data;
+  const env = result.data;
+  if (env.NODE_ENV === "production") {
+    const missing: string[] = [];
+    if (!env.STRIPE_SECRET_KEY) missing.push("STRIPE_SECRET_KEY");
+    if (!env.STRIPE_WEBHOOK_SECRET) missing.push("STRIPE_WEBHOOK_SECRET");
+    if (missing.length) {
+      throw new Error(`Production billing is not configured:\n${missing.map((k) => `  - ${k}`).join("\n")}`);
+    }
+    if (env.STRIPE_SECRET_KEY && !env.STRIPE_SECRET_KEY.startsWith("sk_live_") && !env.STRIPE_SECRET_KEY.startsWith("sk_test_")) {
+      throw new Error("STRIPE_SECRET_KEY must be a Stripe secret key (sk_live_ or sk_test_)");
+    }
+  }
+  return env;
 }

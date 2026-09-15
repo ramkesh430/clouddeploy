@@ -453,6 +453,12 @@ model Service {
   /// what image to run without rebuilding. Null for services that have
   /// never gone through a real build (they stay on the simulated path).
   imageTag            String?
+  /// sha256 digest of `imageTag`, recorded after a real build so runtime
+  /// starts the scanned bytes rather than a retaggable name:tag.
+  imageDigest         String?
+  /// HMAC-SHA256 of `imageDigest` under ENCRYPTION_KEY — verified immediately
+  /// before `docker run`.
+  imageSignature      String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   deletedAt           DateTime?
@@ -577,6 +583,11 @@ model Build {
   buildWorkerId  String?
   status         BuildStatus @default(PENDING)
   dockerImageTag String?
+  imageDigest    String?
+  imageSignature String?
+  scanStatus     String?
+  scanCriticalCount Int @default(0)
+  scanHighCount     Int @default(0)
   registryPath   String?
   startedAt      DateTime?
   finishedAt     DateTime?
@@ -714,6 +725,7 @@ enum DatabaseEngine {
   POSTGRESQL
   MYSQL
   MARIADB
+  MONGODB
 }
 
 enum DatabaseStatus {
@@ -956,6 +968,7 @@ model SSLRecord {
   expiresAt   DateTime?
   autoRenew   Boolean   @default(true)
   lastRenewAt DateTime?
+  lastError   String?
   createdAt   DateTime  @default(now())
 
   domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
@@ -2006,6 +2019,26 @@ model Region {
   servers        Server[]
 
   @@map("regions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Platform settings
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Single-row table of platform-wide admin settings — read via a fixed
+/// "singleton" id rather than a real primary key, since there is exactly
+/// one configuration for the whole platform.
+model PlatformSetting {
+  id                 String   @id @default("singleton")
+  platformName       String   @default("CloudDeploy")
+  supportEmail       String   @default("support@clouddeploy.app")
+  defaultRegion      String   @default("us-east")
+  maintenanceMode    Boolean  @default(false)
+  maintenanceMessage String?
+  updatedAt          DateTime @updatedAt
+  updatedById        String?
+
+  @@map("platform_settings")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

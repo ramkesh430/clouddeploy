@@ -11,6 +11,7 @@ import {
   Network,
   Package,
   Server,
+  Settings,
   ShieldAlert,
   ShieldCheck,
   Users,
@@ -82,10 +83,12 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     items: [
       { label: "Security", href: "/admin/security", icon: ShieldCheck },
       { label: "Audit Logs", href: "/admin/system-logs", icon: ShieldCheck },
+      { label: "Settings", href: "/admin/settings", icon: Settings },
     ],
   },
 ];
 
-export const ADMIN_SEARCH_INDEX: { label: string; href: string; section: string }[] = ADMIN_NAV_SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({ label: item.label, href: item.href, section: section.title })),
-);
+export const ADMIN_SEARCH_INDEX: { label: string; href: string; section: string }[] =
+  ADMIN_NAV_SECTIONS.flatMap((section) =>
+    section.items.map((item) => ({ label: item.label, href: item.href, section: section.title })),
+  );

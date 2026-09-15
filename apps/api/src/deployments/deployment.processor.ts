@@ -20,7 +20,10 @@ const STEP_DELAY_MS = 900;
  * work — a real `git clone` (GitCloneService), a real `docker build`
  * (ImageBuildService), and a real `docker run` + public tunnel
  * (ContainerRuntimeService, invoked from SchedulerService.
- * reconcileServiceReplicas once a service has a built `imageTag`). Every
+ * reconcileServiceReplicas once a service has a built `imageTag`). A
+ * rollback or a template-marketplace deploy skips the clone/build steps —
+ * it already has a real image tag (the previous build's, or the template's
+ * public image) — and goes straight to running it the same real way. Every
  * other project (no connected repo, or a not-yet-supported runtime) falls
  * back to the local simulation adapter described in section 141 of the
  * spec, unchanged — the step/status/log contract is identical either way,
@@ -102,20 +105,23 @@ export class DeploymentProcessor extends WorkerHost {
       (!deployment.serviceId || service.id === deployment.serviceId),
     );
 
-    // Real work only runs for a fresh build (not a rollback/template reuse,
-    // which replay a previously-built image tag whose provenance this pass
-    // doesn't re-verify) on a project with a connected repository where
-    // every deployable service's runtime is one ImageBuildService actually
-    // supports. Everything else — the vast majority of existing projects,
+    // A fresh build needs a connected repository and a runtime
+    // ImageBuildService actually supports. A rollback or template deploy
+    // already has a real image tag sitting in existingBuild — Docker is the
+    // only thing standing between it and a real container (no clone/build
+    // needed either way), so it skips straight to the ensureAvailable check
+    // below. Everything else — the vast majority of existing projects,
     // which have no connected repository at all — keeps the simulated path.
     const connectedRepo = !reusesImage ? await this.gitClone.getConnectedRepository(deployment.projectId) : null;
-    const unsupportedRuntime = deployableServices.find((s) => !this.imageBuild.isSupported(s.runtime));
-    let canDeployReal = !!connectedRepo && !unsupportedRuntime;
-    let downgradeReason: string | null = !connectedRepo
-      ? "No connected repository"
-      : unsupportedRuntime
-        ? `Runtime "${unsupportedRuntime.runtime}" (service "${unsupportedRuntime.name}") isn't supported by real builds yet`
-        : null;
+    const unsupportedRuntime = !reusesImage ? deployableServices.find((s) => !this.imageBuild.isSupported(s.runtime)) : undefined;
+    let canDeployReal = reusesImage ? true : !!connectedRepo && !unsupportedRuntime;
+    let downgradeReason: string | null = reusesImage
+      ? null
+      : !connectedRepo
+        ? "No connected repository"
+        : unsupportedRuntime
+          ? `Runtime "${unsupportedRuntime.runtime}" (service "${unsupportedRuntime.name}") isn't supported by real builds yet`
+          : null;
 
     if (canDeployReal) {
       try {
@@ -126,10 +132,28 @@ export class DeploymentProcessor extends WorkerHost {
       }
     }
 
+    // Stamp the reused image onto the service Docker will actually run.
+    // Without this, a rollback's own container would keep running whatever
+    // the *latest* real build last set here (rollback would be a no-op for
+    // the running code), and a template deploy would never get a real
+    // container at all. Restricted to the single-service case because
+    // existingBuild carries exactly one image tag but a whole-project
+    // (serviceId-less) rollback can span several services.
+    if (reusesImage && canDeployReal && deployableServices.length === 1) {
+      await this.prisma.service.update({
+        where: { id: deployableServices[0]!.id },
+        data: {
+          imageTag: existingBuild!.dockerImageTag,
+          imageDigest: existingBuild!.imageDigest,
+          imageSignature: existingBuild!.imageSignature,
+        },
+      });
+    }
+
     let clonedDir: string | null = null;
     const realImageTags = new Map<string, string>();
 
-    if (!reusesImage && !canDeployReal) {
+    if (!canDeployReal && downgradeReason) {
       await this.log(deploymentId, "INFO", `${downgradeReason} — using simulated deployment`);
     }
 
@@ -149,15 +173,28 @@ export class DeploymentProcessor extends WorkerHost {
           await this.log(deploymentId, "INFO", `Cloned at commit ${cloned.commitSha.slice(0, 7)}`);
         } else if (canDeployReal && step.key === "docker_image") {
           for (const service of deployableServices) {
-            const tag = await this.imageBuild.buildImage(
+            const built = await this.imageBuild.buildImage(
               service,
               deployment.project.slug,
               clonedDir!,
               deployment.commitSha!,
               (line) => this.log(deploymentId, "INFO", line),
             );
-            realImageTags.set(service.id, tag);
-            await this.prisma.service.update({ where: { id: service.id }, data: { imageTag: tag } });
+            realImageTags.set(service.id, built.tag);
+            await this.prisma.service.update({
+              where: { id: service.id },
+              data: { imageTag: built.tag, imageDigest: built.digest, imageSignature: built.signature },
+            });
+            await this.prisma.build.update({
+              where: { deploymentId },
+              data: {
+                imageDigest: built.digest,
+                imageSignature: built.signature,
+                scanStatus: built.scanStatus,
+                scanCriticalCount: built.scanCriticalCount,
+                scanHighCount: built.scanHighCount,
+              },
+            });
           }
         } else {
           for (const line of step.logLines) {

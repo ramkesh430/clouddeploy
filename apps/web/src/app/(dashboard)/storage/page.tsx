@@ -2,16 +2,23 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, HardDrive, Files } from "lucide-react";
+import { Plus, HardDrive, Files, Folder } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useActiveOrganization } from "@/hooks/use-active-organization";
 import { useBuckets, useCreateBucket } from "@/hooks/use-storage";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatRelativeTime } from "@/lib/utils";
 
 export default function StoragePage() {
   const { active } = useActiveOrganization();
@@ -32,16 +39,29 @@ export default function StoragePage() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4" /> Create Bucket</Button>
+            <Button>
+              <Plus className="h-4 w-4" /> Create Bucket
+            </Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Create a storage bucket</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Create a storage bucket</DialogTitle>
+            </DialogHeader>
             <Input placeholder="uploads" value={name} onChange={(e) => setName(e.target.value)} />
             <DialogFooter>
               <Button
                 loading={createBucket.isPending}
                 onClick={() =>
-                  active && createBucket.mutate({ organizationId: active.id, name }, { onSuccess: () => { setOpen(false); setName(""); } })
+                  active &&
+                  createBucket.mutate(
+                    { organizationId: active.id, name },
+                    {
+                      onSuccess: () => {
+                        setOpen(false);
+                        setName("");
+                      },
+                    },
+                  )
                 }
               >
                 Create Bucket
@@ -53,8 +73,18 @@ export default function StoragePage() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
-          { label: "Total Storage", value: formatBytes(totalStorage), icon: HardDrive, color: "text-primary bg-primary/10" },
-          { label: "Buckets", value: buckets?.length ?? 0, icon: HardDrive, color: "text-secondary bg-secondary/10" },
+          {
+            label: "Total Storage",
+            value: formatBytes(totalStorage),
+            icon: HardDrive,
+            color: "text-primary bg-primary/10",
+          },
+          {
+            label: "Buckets",
+            value: buckets?.length ?? 0,
+            icon: HardDrive,
+            color: "text-secondary bg-secondary/10",
+          },
           { label: "Files", value: totalFiles, icon: Files, color: "text-success bg-success/10" },
           { label: "Bandwidth", value: "—", icon: Files, color: "text-warning bg-warning/10" },
         ].map((c) => (
@@ -71,26 +101,55 @@ export default function StoragePage() {
       </div>
 
       {!isLoading && (buckets ?? []).length === 0 ? (
-        <Card><CardContent className="p-0"><EmptyState title="No Buckets" description="Create a bucket to start storing files." action={{ label: "Create Bucket", href: "#", icon: Plus }} /></CardContent></Card>
+        <Card>
+          <CardContent className="p-0">
+            <EmptyState
+              title="No Buckets"
+              description="Create a bucket to start storing files."
+              action={{ label: "Create Bucket", href: "#", icon: Plus }}
+            />
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(buckets ?? []).map((b) => (
-            <Link key={b.id} href={`/storage/${b.id}`}>
-              <Card className="h-full transition-colors hover:border-primary/40">
-                <CardContent className="flex flex-col gap-3 p-5">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">{b.name}</p>
-                    <Badge variant={b.isPublic ? "warning" : "outline"}>{b.isPublic ? "Public" : "Private"}</Badge>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{b._count.objects} files</span>
-                    <span>{formatBytes(b.totalSizeBytes)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="px-5 py-3 font-medium">Name</th>
+                    <th className="px-5 py-3 font-medium">Access</th>
+                    <th className="px-5 py-3 font-medium">Objects</th>
+                    <th className="px-5 py-3 font-medium">Size</th>
+                    <th className="px-5 py-3 font-medium">Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(buckets ?? []).map((b) => (
+                    <tr key={b.id} className="border-b border-border/60 last:border-0 hover:bg-muted/40">
+                      <td className="px-5 py-3">
+                        <Link href={`/storage/${b.id}`} className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <Folder className="h-4 w-4" />
+                          </div>
+                          <span className="font-medium hover:text-primary">{b.name}</span>
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Badge variant={b.isPublic ? "warning" : "outline"}>
+                          {b.isPublic ? "Public" : "Private"}
+                        </Badge>
+                      </td>
+                      <td className="px-5 py-3 text-muted-foreground">{b._count.objects.toLocaleString()}</td>
+                      <td className="px-5 py-3 text-muted-foreground">{formatBytes(b.totalSizeBytes)}</td>
+                      <td className="px-5 py-3 text-muted-foreground">{formatRelativeTime(b.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

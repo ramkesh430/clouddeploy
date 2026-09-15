@@ -20,6 +20,7 @@ import {
   UpdateAdminUserDto,
   UpdateOrganizationDto,
   UpdatePlanDto,
+  UpdatePlatformSettingsDto,
   UpdateSubscriptionDto,
 } from "./dto/admin-crud.dto";
 import { AdminService } from "./admin.service";
@@ -77,6 +78,8 @@ export class AdminController {
   @Get("webhooks") webhooks(@Query("limit") limit?: number) { return this.admin.webhooks(withDefault(limit, 100)); }
   @Get("system-logs") logs(@Query("limit") limit?: number) { return this.admin.logs(withDefault(limit, 100)); }
   @Get("security") security() { return this.admin.security(); }
+  @Get("settings") settings() { return this.admin.getSettings(); }
+  @Patch("settings") updateSettings(@Body() dto: UpdatePlatformSettingsDto, @CurrentUser() user: RequestUser) { return this.admin.updateSettings(dto, user.id); }
   @Post("security/rotate-encryption-key") rotateEncryptionKey(@CurrentUser() user: RequestUser) { return this.encryptionRotation.rotate(user.id); }
   @Get("support/tickets") tickets(@CurrentUser() user: RequestUser) { return this.support.list("", user.id, true); }
   @Get("support/tickets/:ticketId") ticketDetail(@Param("ticketId") ticketId: string) { return this.support.detail(ticketId); }

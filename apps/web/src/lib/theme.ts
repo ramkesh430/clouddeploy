@@ -4,7 +4,7 @@ const STORAGE_KEY = "clouddeploy-theme";
 /** Inlined into a blocking <script> in the root layout so the class lands
  * before first paint — the theme toggle only ever reads/writes the same
  * key and class, never introducing a second source of truth. */
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");if(!t){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}if(t==="dark")document.documentElement.classList.add("dark");}catch(e){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");if(t!=="light"&&t!=="dark"){t="dark";}document.documentElement.classList.toggle("dark",t==="dark");}catch(e){}})();`;
 
 export function getStoredTheme(): Theme {
   if (typeof document === "undefined") return "light";
